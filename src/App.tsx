@@ -14,6 +14,11 @@ import {
   triggerSoundEventHaptic,
 } from './services/haptics';
 import {
+  registerNativeTogglePauseHandler,
+  syncNativeTimerState,
+  useAndroidPipMode,
+} from './services/nativeAndroid';
+import {
   clearPersistedSession,
   loadPersistedSession,
   savePersistedSession,
@@ -52,8 +57,9 @@ import type {
   VoiceProfile,
   WorkoutProgram,
 } from './types/timer';
+import { getClockDisplay } from './utils/formatTime';
 import { shouldTriggerTimerSpaceShortcut } from './utils/keyboardShortcuts';
-import { resolveVisualTheme } from './utils/themePalette';
+import { resolveTimerPhaseBannerLabel, resolveVisualTheme } from './utils/themePalette';
 
 type AppScreen = 'LANDING' | 'SETUP' | 'TIMER';
 
@@ -199,11 +205,76 @@ export function App() {
     [activePhaseVisualState, displaySettings, fillProgress, selectedDiscipline],
   );
 
+  const isPipMode = useAndroidPipMode();
+
   // Protect active timer rounds from PWA Service Worker auto-reloads
   useEffect(() => {
     setTimerSessionActive(screen === 'TIMER');
     return () => setTimerSessionActive(false);
   }, [screen]);
+
+  // Allow native Android PiP / Tray Bar notification action to toggle Pause/Resume
+  useEffect(() => {
+    return registerNativeTogglePauseHandler(() => {
+      if (screen !== 'TIMER') {
+        return;
+      }
+      if (state.phase === 'FINISHED') {
+        start();
+      } else {
+        toggleStartPause();
+      }
+    });
+  }, [screen, start, state.phase, toggleStartPause]);
+
+  // Sync active timer state to Android Picture-in-Picture & status/tray bar notification
+  useEffect(() => {
+    const isTimerActive = screen === 'TIMER';
+    const isRunning =
+      isTimerActive &&
+      !state.isPaused &&
+      state.phase !== 'IDLE' &&
+      state.phase !== 'FINISHED';
+    const clock = getClockDisplay(state.remainingMs);
+    syncNativeTimerState({
+      active: isTimerActive,
+      running: isRunning,
+      paused: isTimerActive && state.isPaused,
+      phaseLabel: isTimerActive
+        ? resolveTimerPhaseBannerLabel(state.phase, state.program.discipline)
+        : '',
+      roundLabel: isTimerActive
+        ? `Round ${state.currentRound} / ${state.program.rounds}`
+        : '',
+      timeText: `${clock.minutes}:${clock.seconds}`,
+      remainingMs: state.remainingMs,
+      colorHex: timerTheme.hex,
+    });
+  }, [
+    screen,
+    state.currentRound,
+    state.isPaused,
+    state.phase,
+    state.program.discipline,
+    state.program.rounds,
+    state.remainingMs,
+    timerTheme.hex,
+  ]);
+
+  useEffect(() => {
+    return () => {
+      syncNativeTimerState({
+        active: false,
+        running: false,
+        paused: false,
+        phaseLabel: '',
+        roundLabel: '',
+        timeText: '00:00',
+        remainingMs: 0,
+        colorHex: '#FFD600',
+      });
+    };
+  }, []);
 
   // Sync effective audio mode & voice profile with soundEngine & localStorage
   useEffect(() => {
@@ -606,6 +677,7 @@ export function App() {
         onBeginRestScrub={beginRestScrub}
         onScrubRestProgress={scrubRestProgress}
         onEndRestScrub={endRestScrub}
+        isPipMode={isPipMode}
         onConfirmExit={handleStopTimer}
       />
     );

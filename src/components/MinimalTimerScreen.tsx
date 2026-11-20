@@ -59,6 +59,7 @@ interface MinimalTimerScreenProps {
   onBeginRestScrub?: () => void;
   onScrubRestProgress?: (progress: number) => void;
   onEndRestScrub?: () => void;
+  isPipMode?: boolean;
   onConfirmExit: () => void;
 }
 
@@ -92,6 +93,7 @@ export function MinimalTimerScreen({
   onBeginRestScrub,
   onScrubRestProgress,
   onEndRestScrub,
+  isPipMode = false,
   onConfirmExit,
 }: MinimalTimerScreenProps) {
   const isFinished = state.phase === 'FINISHED';
@@ -119,12 +121,13 @@ export function MinimalTimerScreen({
   const proTrackRef = useRef<HTMLDivElement | null>(null);
   const fillBarRef = useRef<HTMLDivElement | null>(null);
   const fillEdgeRef = useRef<HTMLDivElement | null>(null);
+  const pipProgressBarRef = useRef<HTMLDivElement | null>(null);
   const latestFillRef = useRef<number>(fillProgress);
   const restScrubRef = useRef<RestScrubGesture | null>(null);
   const themeRgbRef = useRef<string>(theme.rgb);
   themeRgbRef.current = theme.rgb;
   const isRestScrubActive =
-    state.phase === 'REST' && state.phaseDurationMs > 0 && !isExitModalOpen;
+    !isPipMode && state.phase === 'REST' && state.phaseDurationMs > 0 && !isExitModalOpen;
 
   const handleOpenExitModal = useCallback(() => {
     const wasRunning = !state.isPaused && state.phase !== 'IDLE' && state.phase !== 'FINISHED';
@@ -183,6 +186,9 @@ export function MinimalTimerScreen({
     if (fillEdgeRef.current) {
       fillEdgeRef.current.style.opacity = showEdge ? '1' : '0';
     }
+    if (pipProgressBarRef.current) {
+      pipProgressBarRef.current.style.transform = `scaleX(${clamped.toFixed(4)})`;
+    }
   }, []);
 
   useLayoutEffect(() => {
@@ -201,7 +207,7 @@ export function MinimalTimerScreen({
 
   useLayoutEffect(() => {
     applyFillProgress(latestFillRef.current);
-  }, [applyFillProgress, isProLayout, proPalette.rgb, theme.rgb]);
+  }, [applyFillProgress, isPipMode, isProLayout, proPalette.rgb, theme.rgb]);
 
   useDialogFocusTrap({
     isOpen: isExitModalOpen,
@@ -437,6 +443,75 @@ export function MinimalTimerScreen({
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [handleOpenExitModal, isExitModalOpen]);
+
+  if (isPipMode) {
+    const pipAccentHex = isProLayout ? proPalette.hex : theme.hex;
+    const pipAccentRgb = isProLayout ? proPalette.rgb : theme.rgb;
+    const pipLabel = state.isPaused ? 'IN PAUSA' : phaseBannerLabel;
+
+    return (
+      <main
+        ref={mainRef}
+        className="relative flex h-[100dvh] w-screen flex-col items-center justify-between overflow-hidden bg-black px-3 py-2 text-white select-none"
+        style={{
+          background: `radial-gradient(circle at 50% 58%, rgba(${pipAccentRgb}, 0.28) 0%, rgba(${pipAccentRgb}, 0.08) 54%, #000000 100%)`,
+          border: `1.5px solid rgba(${pipAccentRgb}, 0.55)`,
+        }}
+        data-testid="pip-timer-display"
+      >
+        <div className="flex w-full items-center justify-between gap-1.5 text-[11px] font-extrabold tracking-[0.12em] uppercase">
+          <span className="inline-flex min-w-0 items-center gap-1.5 truncate text-white/95">
+            <span
+              className="h-2 w-2 shrink-0 rounded-full"
+              style={{
+                backgroundColor: pipAccentHex,
+                boxShadow: `0 0 8px ${pipAccentHex}`,
+              }}
+              aria-hidden="true"
+            />
+            <span className="truncate">{pipLabel}</span>
+          </span>
+          <span
+            className="tabular-digits shrink-0 font-bold"
+            style={{ color: pipAccentHex }}
+          >
+            R {state.currentRound}/{state.program.rounds}
+          </span>
+        </div>
+
+        <div
+          className={`font-timer tabular-digits timer-digits-luminescent flex flex-1 items-center justify-center font-extrabold leading-none tracking-[-0.02em] text-white ${
+            state.isPaused ? 'animate-paused-blink' : ''
+          }`}
+          style={{
+            fontSize:
+              proClock.minutes.length >= 3
+                ? 'clamp(1.6rem, min(22vw, 46dvh), 4.5rem)'
+                : 'clamp(1.9rem, min(28vw, 52dvh), 5.4rem)',
+            ['--digit-stroke' as string]: '2px',
+          }}
+          role="timer"
+          aria-label={`Tempo rimanente ${proClock.minutes} minuti e ${proClock.seconds} secondi`}
+        >
+          <span>{proClock.minutes}</span>
+          <span className="mx-0.5 -translate-y-[0.04em] opacity-95">:</span>
+          <span>{proClock.seconds}</span>
+        </div>
+
+        <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/15" aria-hidden="true">
+          <div
+            ref={pipProgressBarRef}
+            className="h-full w-full origin-left will-change-transform"
+            style={{
+              backgroundColor: pipAccentHex,
+              boxShadow: `0 0 10px rgba(${pipAccentRgb}, 0.65)`,
+              transform: `scaleX(${Math.min(1, Math.max(0, latestFillRef.current)).toFixed(4)})`,
+            }}
+          />
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main
