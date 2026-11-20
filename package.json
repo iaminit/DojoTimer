@@ -1,0 +1,46 @@
+{
+  "name": "dojo-timer",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "build:web": "VITE_BASE_PATH=/timer/ npm run build && cp DojoTimer.apk dist/DojoTimer.apk",
+    "preview": "vite preview",
+    "typecheck": "tsc -b --noEmit",
+    "test": "vitest run",
+    "build:apk": "npm run build && npx cap sync android && cd android && ANDROID_HOME=\"${ANDROID_HOME:-$HOME/Library/Android/sdk}\" ./gradlew assembleRelease && cp app/build/outputs/apk/release/app-release.apk ../DojoTimer.apk",
+    "build:aab": "npm run build && npx cap sync android && cd android && ANDROID_HOME=\"${ANDROID_HOME:-$HOME/Library/Android/sdk}\" ./gradlew bundleRelease && cp app/build/outputs/bundle/release/app-release.aab ../DojoTimer.aab",
+    "audio:master": "node scripts/audio/master-voices.mjs",
+    "audio:previews": "node scripts/build-audio.mjs"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.6.2",
+    "@capacitor/core": "^8.6.2",
+    "@capacitor/haptics": "^8.0.2",
+    "@fontsource-variable/plus-jakarta-sans": "^5.3.0",
+    "@fontsource-variable/space-grotesk": "^5.3.0",
+    "lucide-react": "^1.74.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.6.2",
+    "@tailwindcss/vite": "^4.3.5",
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "@vitejs/plugin-react": "^6.3.0",
+    "tailwindcss": "^4.3.5",
+    "typescript": "~5.8.3",
+    "vite": "^8.3.8",
+    "vite-plugin-pwa": "^2.0.0",
+    "vitest": "^5.1.1"
+  },
+  "overrides": {
+    "workbox-build": {
+      "glob": "^14.0.6",
+      "minimatch": "^11.0.9"
+    }
+  }
+}
