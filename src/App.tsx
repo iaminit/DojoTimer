@@ -158,6 +158,9 @@ export function App() {
     toggleStartPause,
     reset,
     restartSession,
+    beginRestScrub,
+    scrubRestProgress,
+    endRestScrub,
     selectProgram,
     triggerQuickPreset,
   } = useTimerEngine(initialProgram, {
@@ -600,6 +603,9 @@ export function App() {
         onResume={resume}
         onTogglePause={toggleStartPause}
         onRestartSession={restartSession}
+        onBeginRestScrub={beginRestScrub}
+        onScrubRestProgress={scrubRestProgress}
+        onEndRestScrub={endRestScrub}
         onConfirmExit={handleStopTimer}
       />
     );

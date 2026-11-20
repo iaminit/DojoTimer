@@ -2,6 +2,7 @@ import { Haptics, ImpactStyle, NotificationType } from '@capacitor/haptics';
 import { soundEngine, type SoundImpactEvent } from './soundEngine';
 
 let lastButtonFeedbackAt = 0;
+let lastRestScrubHapticAt = 0;
 let soundEventHapticsEnabled = true;
 let activeSoundHapticTimers: number[] = [];
 
@@ -163,5 +164,58 @@ export function triggerButtonFeedback(emphasis: 'soft' | 'firm' = 'firm'): void 
         navigator.vibrate(6);
       }
     });
+  }
+}
+
+/**
+ * Feedback tattile all'aggancio dello slider di sfondo durante RECUPERO:
+ * click pulsante deciso + impulso aptico/vibrazione.
+ */
+export function triggerRestScrubEngage(): void {
+  soundEngine.unlock();
+  soundEngine.playUiButtonClick('firm');
+  if (isNativeCapacitor()) {
+    void Haptics.impact({ style: ImpactStyle.Medium }).catch(() => {});
+  } else {
+    triggerWebVibration(14);
+  }
+}
+
+/**
+ * Feedback aptico a ogni tacca da 1 secondo durante lo scorrimento della barra di RECUPERO:
+ * click leggero + micro-vibrazione (leggermente più decisa sui multipli di 10s o agli estremi).
+ */
+export function triggerRestScrubStep(displaySecond: number, isBoundary = false): void {
+  const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+  if (!isBoundary && now - lastRestScrubHapticAt < 24) {
+    return;
+  }
+  lastRestScrubHapticAt = now;
+
+  const isMajor = isBoundary || (displaySecond > 0 && displaySecond % 10 === 0);
+  soundEngine.playWheelDetentClick(isMajor);
+
+  if (isNativeCapacitor()) {
+    if (isBoundary) {
+      void Haptics.impact({ style: ImpactStyle.Medium }).catch(() => {});
+    } else if (isMajor) {
+      void Haptics.impact({ style: ImpactStyle.Light }).catch(() => {});
+    } else {
+      void Haptics.vibrate({ duration: 10 }).catch(() => {});
+    }
+  } else {
+    triggerWebVibration(isBoundary ? 18 : isMajor ? 12 : 7);
+  }
+}
+
+/**
+ * Conferma morbida al rilascio della barra di RECUPERO.
+ */
+export function triggerRestScrubRelease(): void {
+  soundEngine.playUiButtonClick('soft');
+  if (isNativeCapacitor()) {
+    void Haptics.impact({ style: ImpactStyle.Light }).catch(() => {});
+  } else {
+    triggerWebVibration(10);
   }
 }

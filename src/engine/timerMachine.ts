@@ -288,6 +288,35 @@ export function advanceWithOvershoot(
   return { nextState: cursor, audioEvents };
 }
 
+export const REST_SCRUB_MIN_REMAINING_MS = 1000;
+
+/**
+ * Aggiorna il tempo rimanente durante la sola fase REST in base al progresso trascinato (0..1):
+ * - progress = 0 -> inizio recupero (remainingMs = phaseDurationMs)
+ * - progress = 1 -> limite sicuro 00:01 (remainingMs = min(phaseDurationMs, 1000ms))
+ * Non modifica mai altre fasi (IDLE, PREP, WORK, FINISHED).
+ */
+export function applyRestScrubProgress(
+  state: TimerEngineState,
+  progress: number,
+): TimerEngineState {
+  if (state.phase !== 'REST' || state.phaseDurationMs <= 0) {
+    return state;
+  }
+  const clampedProgress = Number.isFinite(progress) ? Math.min(1, Math.max(0, progress)) : 0;
+  const minRemainingMs = Math.min(state.phaseDurationMs, REST_SCRUB_MIN_REMAINING_MS);
+  const rawRemainingMs = Math.round((1 - clampedProgress) * state.phaseDurationMs);
+  const nextRemainingMs = Math.min(state.phaseDurationMs, Math.max(minRemainingMs, rawRemainingMs));
+
+  if (nextRemainingMs === state.remainingMs) {
+    return state;
+  }
+  return {
+    ...state,
+    remainingMs: nextRemainingMs,
+  };
+}
+
 /**
  * Calcola la frazione di riempimento (0 -> 1) della fase corrente:
  * 0 in IDLE (pronto a riempirsi), crescente 0->1 durante PREP/WORK/REST, 1 in FINISHED.

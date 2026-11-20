@@ -1,10 +1,19 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import type { PointerEvent as ReactPointerEvent } from 'react';
 import { ChevronLeft, Pause, Play, RefreshCw } from 'lucide-react';
-import type { TimerEngineState } from '../engine/timerMachine';
+import {
+  REST_SCRUB_MIN_REMAINING_MS,
+  type TimerEngineState,
+} from '../engine/timerMachine';
 import { useCurrentClock } from '../hooks/useCurrentClock';
 import { useDialogFocusTrap } from '../hooks/useDialogFocusTrap';
 import { useNativeBackHandler } from '../hooks/useNativeBackHandler';
 import type { FillProgressSubscriber } from '../hooks/useTimerEngine';
+import {
+  triggerRestScrubEngage,
+  triggerRestScrubRelease,
+  triggerRestScrubStep,
+} from '../services/haptics';
 import { soundEngine, type SoundImpactEvent } from '../services/soundEngine';
 import type { SolidColorKey, TimerColorMode, TimerLayoutMode } from '../types/timer';
 import { getClockDisplay } from '../utils/formatTime';
@@ -47,7 +56,23 @@ interface MinimalTimerScreenProps {
   onResume: () => void;
   onTogglePause: () => void;
   onRestartSession: () => void;
+  onBeginRestScrub?: () => void;
+  onScrubRestProgress?: (progress: number) => void;
+  onEndRestScrub?: () => void;
   onConfirmExit: () => void;
+}
+
+const REST_SCRUB_DEADZONE_PX = 6;
+
+interface RestScrubGesture {
+  pointerId: number;
+  startX: number;
+  startY: number;
+  startProgress: number;
+  trackSpan: number;
+  isLandscape: boolean;
+  engaged: boolean;
+  lastEmittedSec: number;
 }
 
 export function MinimalTimerScreen({
@@ -63,6 +88,9 @@ export function MinimalTimerScreen({
   onResume,
   onTogglePause,
   onRestartSession,
+  onBeginRestScrub,
+  onScrubRestProgress,
+  onEndRestScrub,
   onConfirmExit,
 }: MinimalTimerScreenProps) {
   const isFinished = state.phase === 'FINISHED';
@@ -87,11 +115,15 @@ export function MinimalTimerScreen({
   const confirmYesBtnRef = useRef<HTMLButtonElement | null>(null);
   const cancelNoBtnRef = useRef<HTMLButtonElement | null>(null);
 
+  const proTrackRef = useRef<HTMLDivElement | null>(null);
   const fillBarRef = useRef<HTMLDivElement | null>(null);
   const fillEdgeRef = useRef<HTMLDivElement | null>(null);
   const latestFillRef = useRef<number>(fillProgress);
+  const restScrubRef = useRef<RestScrubGesture | null>(null);
   const themeRgbRef = useRef<string>(theme.rgb);
   themeRgbRef.current = theme.rgb;
+  const isRestScrubActive =
+    state.phase === 'REST' && state.phaseDurationMs > 0 && !isExitModalOpen;
 
   const handleOpenExitModal = useCallback(() => {
     const wasRunning = !state.isPaused && state.phase !== 'IDLE' && state.phase !== 'FINISHED';
@@ -227,6 +259,150 @@ export function MinimalTimerScreen({
   }, [state.phase, clearImpactShake]);
 
   useEffect(() => {
+    if (!isRestScrubActive && restScrubRef.current) {
+      const wasEngaged = restScrubRef.current.engaged;
+      restScrubRef.current = null;
+      if (wasEngaged) {
+        onEndRestScrub?.();
+      }
+    }
+  }, [isRestScrubActive, onEndRestScrub]);
+
+  const handleMainPointerDown = useCallback(
+    (e: ReactPointerEvent<HTMLElement>) => {
+      if (!isRestScrubActive || !onScrubRestProgress) {
+        return;
+      }
+      if (e.pointerType === 'mouse' && e.button !== 0) {
+        return;
+      }
+      const target = e.target as HTMLElement | null;
+      if (
+        target?.closest(
+          'button, [role="button"], [role="dialog"], a[href], header, footer',
+        )
+      ) {
+        return;
+      }
+
+      const trackEl = isProLayout ? proTrackRef.current : mainRef.current;
+      const rect = trackEl?.getBoundingClientRect();
+      if (!rect || rect.width <= 0 || rect.height <= 0) {
+        return;
+      }
+
+      const isLandscape =
+        typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+          ? window.matchMedia('(orientation: landscape)').matches
+          : rect.width > rect.height;
+      const trackSpan = Math.max(120, isLandscape ? rect.width : rect.height);
+      const startProgress = latestFillRef.current;
+      const initialRemainingMs = Math.round((1 - startProgress) * state.phaseDurationMs);
+
+      restScrubRef.current = {
+        pointerId: e.pointerId,
+        startX: e.clientX,
+        startY: e.clientY,
+        startProgress,
+        trackSpan,
+        isLandscape,
+        engaged: false,
+        lastEmittedSec: Math.ceil(Math.max(REST_SCRUB_MIN_REMAINING_MS, initialRemainingMs) / 1000),
+      };
+    },
+    [isProLayout, isRestScrubActive, onScrubRestProgress, state.phaseDurationMs],
+  );
+
+  const handleMainPointerMove = useCallback(
+    (e: ReactPointerEvent<HTMLElement>) => {
+      const gesture = restScrubRef.current;
+      if (!gesture || gesture.pointerId !== e.pointerId || !isRestScrubActive || !onScrubRestProgress) {
+        return;
+      }
+
+      const rawAxisDelta = gesture.isLandscape
+        ? e.clientX - gesture.startX
+        : gesture.startY - e.clientY;
+
+      if (!gesture.engaged) {
+        if (Math.abs(rawAxisDelta) < REST_SCRUB_DEADZONE_PX) {
+          return;
+        }
+        gesture.engaged = true;
+        try {
+          mainRef.current?.setPointerCapture?.(e.pointerId);
+        } catch {
+          // Ignore environments without pointer capture support
+        }
+        onBeginRestScrub?.();
+        triggerRestScrubEngage();
+      }
+
+      const effectiveDelta =
+        rawAxisDelta > 0
+          ? rawAxisDelta - REST_SCRUB_DEADZONE_PX
+          : rawAxisDelta + REST_SCRUB_DEADZONE_PX;
+      const nextProgress = Math.min(
+        1,
+        Math.max(0, gesture.startProgress + effectiveDelta / gesture.trackSpan),
+      );
+
+      onScrubRestProgress(nextProgress);
+
+      const durationMs = state.phaseDurationMs;
+      const minRemainingMs = Math.min(durationMs, REST_SCRUB_MIN_REMAINING_MS);
+      const nextRemainingMs = Math.min(
+        durationMs,
+        Math.max(minRemainingMs, Math.round((1 - nextProgress) * durationMs)),
+      );
+      const nextDisplaySec = Math.ceil(nextRemainingMs / 1000);
+
+      if (nextDisplaySec !== gesture.lastEmittedSec) {
+        gesture.lastEmittedSec = nextDisplaySec;
+        const isBoundary =
+          nextRemainingMs <= minRemainingMs || nextRemainingMs >= durationMs;
+        triggerRestScrubStep(nextDisplaySec, isBoundary);
+      }
+    },
+    [isRestScrubActive, onBeginRestScrub, onScrubRestProgress, state.phaseDurationMs],
+  );
+
+  const finishRestScrubGesture = useCallback(
+    (pointerId?: number) => {
+      const gesture = restScrubRef.current;
+      if (!gesture) {
+        return;
+      }
+      if (pointerId !== undefined && gesture.pointerId !== pointerId) {
+        return;
+      }
+      const wasEngaged = gesture.engaged;
+      restScrubRef.current = null;
+      if (pointerId !== undefined) {
+        try {
+          if (mainRef.current?.hasPointerCapture?.(pointerId)) {
+            mainRef.current.releasePointerCapture(pointerId);
+          }
+        } catch {
+          // Ignore release errors
+        }
+      }
+      if (wasEngaged) {
+        triggerRestScrubRelease();
+        onEndRestScrub?.();
+      }
+    },
+    [onEndRestScrub],
+  );
+
+  const handleMainPointerUp = useCallback(
+    (e: ReactPointerEvent<HTMLElement>) => {
+      finishRestScrubGesture(e.pointerId);
+    },
+    [finishRestScrubGesture],
+  );
+
+  useEffect(() => {
     if (isExitModalOpen) {
       return;
     }
@@ -244,6 +420,12 @@ export function MinimalTimerScreen({
   return (
     <main
       ref={mainRef}
+      onPointerDown={handleMainPointerDown}
+      onPointerMove={handleMainPointerMove}
+      onPointerUp={handleMainPointerUp}
+      onPointerCancel={handleMainPointerUp}
+      onLostPointerCapture={handleMainPointerUp}
+      style={isRestScrubActive ? { touchAction: 'none' } : undefined}
       className={
         isProLayout
           ? 'font-timer-pro relative flex h-[100dvh] w-screen flex-col items-center justify-between overflow-hidden bg-black text-white'
@@ -254,6 +436,7 @@ export function MinimalTimerScreen({
       {isProLayout ? (
         <>
           <div
+            ref={proTrackRef}
             className="pointer-events-none absolute inset-x-0 top-0 bottom-[calc(88px+env(safe-area-inset-bottom,0px))] sm:bottom-[calc(104px+env(safe-area-inset-bottom,0px))] landscape:bottom-[calc(68px+env(safe-area-inset-bottom,0px))] [@media(orientation:landscape)_and_(max-height:520px)]:bottom-[calc(58px+env(safe-area-inset-bottom,0px))] z-0 overflow-hidden bg-black"
             aria-hidden="true"
           >

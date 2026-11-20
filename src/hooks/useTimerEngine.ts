@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   advanceWithOvershoot,
+  applyRestScrubProgress,
   computeFillProgress,
   createIdleState,
   createQuickPresetProgram,
@@ -58,6 +59,9 @@ export interface UseTimerEngineResult {
   skipForward: () => void;
   skipBackward: () => void;
   restartSession: () => void;
+  beginRestScrub: () => void;
+  scrubRestProgress: (progress: number) => void;
+  endRestScrub: () => void;
   selectProgram: (program: WorkoutProgram, autoStart?: boolean) => void;
   triggerQuickPreset: (
     minutes: number,
@@ -106,6 +110,7 @@ export function useTimerEngine(
   }
   const lastCountdownBeepKeyRef = useRef<string>('');
   const lastWarningKeyRef = useRef<string>(initialWarningKeyRef.current);
+  const isScrubbingRestRef = useRef<boolean>(false);
 
   const isRunning = !state.isPaused && state.phase !== 'IDLE' && state.phase !== 'FINISHED';
   const hasActiveSession = state.phase !== 'IDLE' && state.phase !== 'FINISHED';
@@ -164,6 +169,9 @@ export function useTimerEngine(
   }, []);
 
   const tick = useCallback(() => {
+    if (isScrubbingRestRef.current) {
+      return;
+    }
     const current = liveStateRef.current;
     if (current.isPaused || current.phase === 'IDLE' || current.phase === 'FINISHED') {
       return;
@@ -288,6 +296,7 @@ export function useTimerEngine(
   }, [checkEdgeAudio, commitState, resetEdgeDetectors]);
 
   const pause = useCallback(() => {
+    isScrubbingRestRef.current = false;
     const current = liveStateRef.current;
     if (current.isPaused || current.phase === 'IDLE' || current.phase === 'FINISHED') {
       return;
@@ -303,6 +312,7 @@ export function useTimerEngine(
   }, [commitState]);
 
   const resume = useCallback(() => {
+    isScrubbingRestRef.current = false;
     soundEngine.unlock();
     const current = liveStateRef.current;
     if (!current.isPaused || current.phase === 'IDLE' || current.phase === 'FINISHED') {
@@ -329,6 +339,7 @@ export function useTimerEngine(
   }, [pause, resume, start]);
 
   const reset = useCallback(() => {
+    isScrubbingRestRef.current = false;
     soundEngine.unlock();
     soundEngine.stopAllVoice();
     resetEdgeDetectors();
@@ -339,6 +350,7 @@ export function useTimerEngine(
   }, [commitState, resetEdgeDetectors]);
 
   const restartSession = useCallback(() => {
+    isScrubbingRestRef.current = false;
     soundEngine.unlock();
     soundEngine.stopAllVoice();
     resetEdgeDetectors();
@@ -363,6 +375,7 @@ export function useTimerEngine(
   }, [checkEdgeAudio, commitState, resetEdgeDetectors]);
 
   const skipForward = useCallback(() => {
+    isScrubbingRestRef.current = false;
     soundEngine.unlock();
     soundEngine.stopAllVoice();
     const current = liveStateRef.current;
@@ -389,6 +402,7 @@ export function useTimerEngine(
   }, [commitState, resetEdgeDetectors]);
 
   const skipBackward = useCallback(() => {
+    isScrubbingRestRef.current = false;
     soundEngine.unlock();
     soundEngine.stopAllVoice();
     const current = liveStateRef.current;
@@ -428,6 +442,7 @@ export function useTimerEngine(
 
   const selectProgram = useCallback(
     (program: WorkoutProgram, autoStart = false) => {
+      isScrubbingRestRef.current = false;
       soundEngine.unlock();
       resetEdgeDetectors();
       const idle = createIdleState(program, null);
@@ -451,6 +466,7 @@ export function useTimerEngine(
       discipline: DisciplineMode = 'JUDO',
       optionsParam: QuickPresetOptions = {},
     ) => {
+      isScrubbingRestRef.current = false;
       const safeMinutes = Math.max(1, Math.round(minutes));
       soundEngine.unlock();
       resetEdgeDetectors();
@@ -464,6 +480,59 @@ export function useTimerEngine(
     },
     [checkEdgeAudio, commitState, resetEdgeDetectors],
   );
+
+  const beginRestScrub = useCallback(() => {
+    const current = liveStateRef.current;
+    if (current.phase !== 'REST' || current.phaseDurationMs <= 0) {
+      return;
+    }
+    isScrubbingRestRef.current = true;
+    if (!current.isPaused) {
+      const frozenMs = Math.min(
+        current.phaseDurationMs,
+        Math.max(1, phaseEndPerfRef.current - performance.now()),
+      );
+      liveStateRef.current = {
+        ...current,
+        remainingMs: frozenMs,
+      };
+    }
+  }, []);
+
+  const scrubRestProgress = useCallback(
+    (progress: number) => {
+      const current = liveStateRef.current;
+      if (current.phase !== 'REST' || current.phaseDurationMs <= 0) {
+        return;
+      }
+      const next = applyRestScrubProgress(current, progress);
+      liveStateRef.current = next;
+      if (!next.isPaused) {
+        phaseEndPerfRef.current = performance.now() + next.remainingMs;
+      }
+      notifyProgress(computeFillProgress(next));
+      if (shouldCommitTimerFrame(committedStateRef.current, next)) {
+        committedStateRef.current = next;
+        setState(next);
+      }
+    },
+    [notifyProgress],
+  );
+
+  const endRestScrub = useCallback(() => {
+    if (!isScrubbingRestRef.current) {
+      return;
+    }
+    isScrubbingRestRef.current = false;
+    const current = liveStateRef.current;
+    if (current.phase !== 'REST') {
+      return;
+    }
+    if (!current.isPaused) {
+      phaseEndPerfRef.current = performance.now() + current.remainingMs;
+    }
+    commitState(current, true);
+  }, [commitState]);
 
   const subscribeFillProgress = useCallback<FillProgressSubscriber>((listener) => {
     progressListenersRef.current.add(listener);
@@ -492,6 +561,9 @@ export function useTimerEngine(
     skipForward,
     skipBackward,
     restartSession,
+    beginRestScrub,
+    scrubRestProgress,
+    endRestScrub,
     selectProgram,
     triggerQuickPreset,
   };
