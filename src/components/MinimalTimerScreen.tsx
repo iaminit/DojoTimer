@@ -62,7 +62,7 @@ interface MinimalTimerScreenProps {
   onConfirmExit: () => void;
 }
 
-const REST_SCRUB_DEADZONE_PX = 6;
+const REST_SCRUB_DEADZONE_PX = 4;
 
 interface RestScrubGesture {
   pointerId: number;
@@ -70,6 +70,7 @@ interface RestScrubGesture {
   startY: number;
   startProgress: number;
   trackSpan: number;
+  phaseDurationMs: number;
   isLandscape: boolean;
   engaged: boolean;
   lastEmittedSec: number;
@@ -258,22 +259,130 @@ export function MinimalTimerScreen({
     }
   }, [state.phase, clearImpactShake]);
 
+  const onBeginRestScrubRef = useRef(onBeginRestScrub);
+  onBeginRestScrubRef.current = onBeginRestScrub;
+  const onScrubRestProgressRef = useRef(onScrubRestProgress);
+  onScrubRestProgressRef.current = onScrubRestProgress;
+  const onEndRestScrubRef = useRef(onEndRestScrub);
+  onEndRestScrubRef.current = onEndRestScrub;
+
+  const finishRestScrubGesture = useCallback((pointerId?: number) => {
+    const gesture = restScrubRef.current;
+    if (!gesture) {
+      return;
+    }
+    if (pointerId !== undefined && gesture.pointerId !== pointerId) {
+      return;
+    }
+    const wasEngaged = gesture.engaged;
+    restScrubRef.current = null;
+    if (wasEngaged) {
+      triggerRestScrubRelease();
+      onEndRestScrubRef.current?.();
+    }
+  }, []);
+
   useEffect(() => {
     if (!isRestScrubActive && restScrubRef.current) {
       const wasEngaged = restScrubRef.current.engaged;
       restScrubRef.current = null;
       if (wasEngaged) {
-        onEndRestScrub?.();
+        onEndRestScrubRef.current?.();
       }
     }
-  }, [isRestScrubActive, onEndRestScrub]);
+  }, [isRestScrubActive]);
+
+  // Global window pointer tracking + non-passive touchmove guard so mobile touch drags
+  // never break on implicit child pointer capture (lostpointercapture) or browser overscroll.
+  useEffect(() => {
+    if (!isRestScrubActive) {
+      return;
+    }
+
+    const onWindowPointerMove = (e: PointerEvent) => {
+      const gesture = restScrubRef.current;
+      const scrubFn = onScrubRestProgressRef.current;
+      if (!gesture || gesture.pointerId !== e.pointerId || !scrubFn) {
+        return;
+      }
+
+      const rawAxisDelta = gesture.isLandscape
+        ? e.clientX - gesture.startX
+        : gesture.startY - e.clientY;
+
+      if (!gesture.engaged) {
+        if (Math.abs(rawAxisDelta) < REST_SCRUB_DEADZONE_PX) {
+          return;
+        }
+        gesture.engaged = true;
+        onBeginRestScrubRef.current?.();
+        triggerRestScrubEngage();
+      }
+
+      if (e.cancelable) {
+        e.preventDefault();
+      }
+
+      const effectiveDelta =
+        rawAxisDelta > 0
+          ? rawAxisDelta - REST_SCRUB_DEADZONE_PX
+          : rawAxisDelta + REST_SCRUB_DEADZONE_PX;
+      const nextProgress = Math.min(
+        1,
+        Math.max(0, gesture.startProgress + effectiveDelta / gesture.trackSpan),
+      );
+
+      scrubFn(nextProgress);
+
+      const durationMs = gesture.phaseDurationMs;
+      const minRemainingMs = Math.min(durationMs, REST_SCRUB_MIN_REMAINING_MS);
+      const nextRemainingMs = Math.min(
+        durationMs,
+        Math.max(minRemainingMs, Math.round((1 - nextProgress) * durationMs)),
+      );
+      const nextDisplaySec = Math.ceil(nextRemainingMs / 1000);
+
+      if (nextDisplaySec !== gesture.lastEmittedSec) {
+        gesture.lastEmittedSec = nextDisplaySec;
+        const isBoundary =
+          nextRemainingMs <= minRemainingMs || nextRemainingMs >= durationMs;
+        triggerRestScrubStep(nextDisplaySec, isBoundary);
+      }
+    };
+
+    const onWindowPointerEnd = (e: PointerEvent) => {
+      finishRestScrubGesture(e.pointerId);
+    };
+
+    const mainEl = mainRef.current;
+    const onNativeTouchMove = (e: TouchEvent) => {
+      if (restScrubRef.current && e.cancelable) {
+        e.preventDefault();
+      }
+    };
+
+    window.addEventListener('pointermove', onWindowPointerMove, { passive: false });
+    window.addEventListener('pointerup', onWindowPointerEnd);
+    window.addEventListener('pointercancel', onWindowPointerEnd);
+    mainEl?.addEventListener('touchmove', onNativeTouchMove, { passive: false });
+
+    return () => {
+      window.removeEventListener('pointermove', onWindowPointerMove);
+      window.removeEventListener('pointerup', onWindowPointerEnd);
+      window.removeEventListener('pointercancel', onWindowPointerEnd);
+      mainEl?.removeEventListener('touchmove', onNativeTouchMove);
+    };
+  }, [finishRestScrubGesture, isRestScrubActive]);
 
   const handleMainPointerDown = useCallback(
     (e: ReactPointerEvent<HTMLElement>) => {
-      if (!isRestScrubActive || !onScrubRestProgress) {
+      if (!isRestScrubActive || !onScrubRestProgressRef.current) {
         return;
       }
       if (e.pointerType === 'mouse' && e.button !== 0) {
+        return;
+      }
+      if (restScrubRef.current && restScrubRef.current.pointerId !== e.pointerId) {
         return;
       }
       const target = e.target as HTMLElement | null;
@@ -305,101 +414,13 @@ export function MinimalTimerScreen({
         startY: e.clientY,
         startProgress,
         trackSpan,
+        phaseDurationMs: state.phaseDurationMs,
         isLandscape,
         engaged: false,
         lastEmittedSec: Math.ceil(Math.max(REST_SCRUB_MIN_REMAINING_MS, initialRemainingMs) / 1000),
       };
     },
-    [isProLayout, isRestScrubActive, onScrubRestProgress, state.phaseDurationMs],
-  );
-
-  const handleMainPointerMove = useCallback(
-    (e: ReactPointerEvent<HTMLElement>) => {
-      const gesture = restScrubRef.current;
-      if (!gesture || gesture.pointerId !== e.pointerId || !isRestScrubActive || !onScrubRestProgress) {
-        return;
-      }
-
-      const rawAxisDelta = gesture.isLandscape
-        ? e.clientX - gesture.startX
-        : gesture.startY - e.clientY;
-
-      if (!gesture.engaged) {
-        if (Math.abs(rawAxisDelta) < REST_SCRUB_DEADZONE_PX) {
-          return;
-        }
-        gesture.engaged = true;
-        try {
-          mainRef.current?.setPointerCapture?.(e.pointerId);
-        } catch {
-          // Ignore environments without pointer capture support
-        }
-        onBeginRestScrub?.();
-        triggerRestScrubEngage();
-      }
-
-      const effectiveDelta =
-        rawAxisDelta > 0
-          ? rawAxisDelta - REST_SCRUB_DEADZONE_PX
-          : rawAxisDelta + REST_SCRUB_DEADZONE_PX;
-      const nextProgress = Math.min(
-        1,
-        Math.max(0, gesture.startProgress + effectiveDelta / gesture.trackSpan),
-      );
-
-      onScrubRestProgress(nextProgress);
-
-      const durationMs = state.phaseDurationMs;
-      const minRemainingMs = Math.min(durationMs, REST_SCRUB_MIN_REMAINING_MS);
-      const nextRemainingMs = Math.min(
-        durationMs,
-        Math.max(minRemainingMs, Math.round((1 - nextProgress) * durationMs)),
-      );
-      const nextDisplaySec = Math.ceil(nextRemainingMs / 1000);
-
-      if (nextDisplaySec !== gesture.lastEmittedSec) {
-        gesture.lastEmittedSec = nextDisplaySec;
-        const isBoundary =
-          nextRemainingMs <= minRemainingMs || nextRemainingMs >= durationMs;
-        triggerRestScrubStep(nextDisplaySec, isBoundary);
-      }
-    },
-    [isRestScrubActive, onBeginRestScrub, onScrubRestProgress, state.phaseDurationMs],
-  );
-
-  const finishRestScrubGesture = useCallback(
-    (pointerId?: number) => {
-      const gesture = restScrubRef.current;
-      if (!gesture) {
-        return;
-      }
-      if (pointerId !== undefined && gesture.pointerId !== pointerId) {
-        return;
-      }
-      const wasEngaged = gesture.engaged;
-      restScrubRef.current = null;
-      if (pointerId !== undefined) {
-        try {
-          if (mainRef.current?.hasPointerCapture?.(pointerId)) {
-            mainRef.current.releasePointerCapture(pointerId);
-          }
-        } catch {
-          // Ignore release errors
-        }
-      }
-      if (wasEngaged) {
-        triggerRestScrubRelease();
-        onEndRestScrub?.();
-      }
-    },
-    [onEndRestScrub],
-  );
-
-  const handleMainPointerUp = useCallback(
-    (e: ReactPointerEvent<HTMLElement>) => {
-      finishRestScrubGesture(e.pointerId);
-    },
-    [finishRestScrubGesture],
+    [isProLayout, isRestScrubActive, state.phaseDurationMs],
   );
 
   useEffect(() => {
@@ -421,10 +442,6 @@ export function MinimalTimerScreen({
     <main
       ref={mainRef}
       onPointerDown={handleMainPointerDown}
-      onPointerMove={handleMainPointerMove}
-      onPointerUp={handleMainPointerUp}
-      onPointerCancel={handleMainPointerUp}
-      onLostPointerCapture={handleMainPointerUp}
       style={isRestScrubActive ? { touchAction: 'none' } : undefined}
       className={
         isProLayout
