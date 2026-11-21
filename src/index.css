@@ -18,7 +18,7 @@
     -webkit-tap-highlight-color: transparent;
     -webkit-text-size-adjust: 100%;
     text-size-adjust: 100%;
-    touch-action: manipulation;
+    touch-action: pan-x pan-y;
   }
 
   :focus-visible {
@@ -279,6 +279,7 @@
   scrollbar-color: rgba(255, 214, 0, 0.4) #0a0a0a;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-y: contain;
+  touch-action: pan-y;
 }
 
 .dojo-scroll::-webkit-scrollbar {

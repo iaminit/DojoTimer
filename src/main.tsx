@@ -6,14 +6,34 @@ import '@fontsource-variable/space-grotesk';
 import './index.css';
 import { App } from './App';
 import { AppErrorBoundary } from './components/AppErrorBoundary';
+import { isNativeAndroidRuntime } from './services/nativeAndroid';
 import { notifySwControllerChange } from './services/swUpdateGuard';
 
-const isCapacitorNative =
-  typeof window !== 'undefined' &&
-  Boolean(
-    (window as unknown as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor
-      ?.isNativePlatform?.(),
-  );
+const isCapacitorNative = isNativeAndroidRuntime();
+
+// Disabilita pinch-zoom su Android WebView, PWA mobile (incl. iOS Safari) e trackpad desktop
+if (typeof window !== 'undefined' && typeof document !== 'undefined') {
+  const preventGesture = (event: Event) => {
+    event.preventDefault();
+  };
+  const preventMultiTouch = (event: TouchEvent) => {
+    if (event.touches.length > 1) {
+      event.preventDefault();
+    }
+  };
+  const preventWheelPinch = (event: WheelEvent) => {
+    if (event.ctrlKey) {
+      event.preventDefault();
+    }
+  };
+
+  document.addEventListener('gesturestart', preventGesture, { passive: false });
+  document.addEventListener('gesturechange', preventGesture, { passive: false });
+  document.addEventListener('gestureend', preventGesture, { passive: false });
+  document.addEventListener('touchstart', preventMultiTouch, { passive: false });
+  document.addEventListener('touchmove', preventMultiTouch, { passive: false });
+  window.addEventListener('wheel', preventWheelPinch, { passive: false });
+}
 
 if (!isCapacitorNative && typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
   navigator.serviceWorker.addEventListener('controllerchange', () => {

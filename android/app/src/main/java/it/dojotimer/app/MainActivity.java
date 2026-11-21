@@ -197,6 +197,9 @@ public class MainActivity extends BridgeActivity {
       WebView webView = getBridge().getWebView();
       WebSettings settings = webView.getSettings();
       settings.setTextZoom(100);
+      settings.setSupportZoom(false);
+      settings.setBuiltInZoomControls(false);
+      settings.setDisplayZoomControls(false);
       settings.setMediaPlaybackRequiresUserGesture(false);
       settings.setAllowFileAccess(false);
       settings.setAllowFileAccessFromFileURLs(false);
