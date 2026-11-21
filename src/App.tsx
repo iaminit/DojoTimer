@@ -15,6 +15,7 @@ import {
 } from './services/haptics';
 import {
   registerNativeTogglePauseHandler,
+  setNativeVuMeterMode,
   syncNativeTimerState,
   useAndroidPipMode,
 } from './services/nativeAndroid';
@@ -36,6 +37,7 @@ import {
   loadPrograms,
   loadSetupConfig,
   loadVoiceProfile,
+  loadVuMeterMode,
   programToSetupConfig,
   resolveEffectiveAudioMode,
   resolveLandingProgramForDiscipline,
@@ -47,6 +49,7 @@ import {
   savePrograms,
   saveSetupConfig,
   saveVoiceProfile,
+  saveVuMeterMode,
 } from './services/storage';
 import type {
   AudioMode,
@@ -55,6 +58,7 @@ import type {
   QuickSetupConfig,
   TimerLayoutMode,
   VoiceProfile,
+  VuMeterMode,
   WorkoutProgram,
 } from './types/timer';
 import { getClockDisplay } from './utils/formatTime';
@@ -119,6 +123,7 @@ export function App() {
   const [eventHapticsEnabled, setEventHapticsEnabled] = useState<boolean>(() =>
     loadEventHapticsEnabled(),
   );
+  const [vuMeterMode, setVuMeterMode] = useState<VuMeterMode>(() => loadVuMeterMode());
   const [isColorSettingsOpen, setIsColorSettingsOpen] = useState(false);
   const [initialEditProgram, setInitialEditProgram] = useState<WorkoutProgram | null>(null);
 
@@ -163,6 +168,9 @@ export function App() {
     resume,
     toggleStartPause,
     reset,
+    skipForward,
+    skipBackward,
+    restartCurrentRound,
     restartSession,
     beginRestScrub,
     scrubRestProgress,
@@ -289,6 +297,10 @@ export function App() {
   useEffect(() => {
     setSoundEventHapticsEnabled(eventHapticsEnabled);
   }, [eventHapticsEnabled]);
+
+  useEffect(() => {
+    setNativeVuMeterMode(vuMeterMode);
+  }, [vuMeterMode]);
 
   useEffect(() => {
     const unsubImpact = soundEngine.subscribeSoundImpact((event) => {
@@ -548,6 +560,12 @@ export function App() {
     }
   }, []);
 
+  const handleChangeVuMeterMode = useCallback((mode: VuMeterMode) => {
+    setVuMeterMode(mode);
+    saveVuMeterMode(mode);
+    setNativeVuMeterMode(mode);
+  }, []);
+
   const handleSavePrograms = useCallback(
     (nextPrograms: WorkoutProgram[]) => {
       programsRef.current = nextPrograms;
@@ -666,6 +684,8 @@ export function App() {
         theme={timerTheme}
         timerLayout={displaySettings.timerLayout}
         backgroundOpacity={displaySettings.backgroundOpacity}
+        digitScale={displaySettings.digitScale}
+        vuMeterMode={vuMeterMode}
         colorMode={displaySettings.colorMode}
         solidColor={displaySettings.solidColor}
         fillProgress={fillProgress}
@@ -673,6 +693,9 @@ export function App() {
         onPause={pause}
         onResume={resume}
         onTogglePause={toggleStartPause}
+        onRestartCurrentRound={restartCurrentRound}
+        onSkipForward={skipForward}
+        onSkipBackward={skipBackward}
         onRestartSession={restartSession}
         onBeginRestScrub={beginRestScrub}
         onScrubRestProgress={scrubRestProgress}
@@ -697,6 +720,8 @@ export function App() {
         onChangeTimerLayout={handleChangeTimerLayout}
         eventHapticsEnabled={eventHapticsEnabled}
         onChangeEventHapticsEnabled={handleChangeEventHapticsEnabled}
+        vuMeterMode={vuMeterMode}
+        onChangeVuMeterMode={handleChangeVuMeterMode}
         programs={programs}
         activeProgramId={activeProgramId}
         initialEditProgram={initialEditProgram}

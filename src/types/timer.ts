@@ -36,6 +36,8 @@ export type AudioMode = 'VOICE_GONG' | 'GONG_ONLY';
 
 export type VoiceProfile = 'KENGURO' | 'ARALE';
 
+export type VuMeterMode = 'OFF' | 'LOCAL_PLAYER' | 'SESSION_VISUALIZER' | 'PLAYBACK_CAPTURE';
+
 export type PaletteColorKey = 'YELLOW' | 'GREEN' | 'RED' | 'ORANGE';
 
 export type TimerLayoutMode = 'CLASSIC' | 'PRO';
@@ -51,6 +53,7 @@ export interface DisplaySettings {
   contrastLevel: number; // 0-100
   timerLayout: TimerLayoutMode;
   backgroundOpacity: number; // 0-100 (default 50)
+  digitScale: number; // 70-135 (default 100; portrait applies -5%)
   colorMode: TimerColorMode;
   solidColor: SolidColorKey;
 }

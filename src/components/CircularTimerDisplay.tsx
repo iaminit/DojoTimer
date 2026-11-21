@@ -1,6 +1,7 @@
 import { useCallback, useLayoutEffect, useRef } from 'react';
 import type { TimerEngineState } from '../engine/timerMachine';
 import type { FillProgressSubscriber } from '../hooks/useTimerEngine';
+import { resolveDigitScaleFactors } from '../services/storage';
 import { getClockDisplay } from '../utils/formatTime';
 import {
   resolveTimerPhaseBannerLabel,
@@ -11,6 +12,7 @@ import { CircularWaterTank } from './CircularWaterTank';
 interface CircularTimerDisplayProps {
   state: TimerEngineState;
   theme: VisualThemeTokens;
+  digitScale?: number;
   fillProgress: number;
   subscribeFillProgress?: FillProgressSubscriber;
 }
@@ -24,10 +26,12 @@ const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
 export function CircularTimerDisplay({
   state,
   theme,
+  digitScale = 100,
   fillProgress,
   subscribeFillProgress,
 }: CircularTimerDisplayProps) {
   const clock = getClockDisplay(state.remainingMs);
+  const { portraitFactor, landscapeFactor } = resolveDigitScaleFactors(digitScale);
   const phaseBannerLabel = resolveTimerPhaseBannerLabel(state.phase, state.program.discipline);
   const progressCircleRef = useRef<SVGCircleElement | null>(null);
   const progressHaloCircleRef = useRef<SVGCircleElement | null>(null);
@@ -154,8 +158,8 @@ export function CircularTimerDisplay({
               style={{
                 fontSize:
                   clock.minutes.length >= 3
-                    ? 'clamp(2rem, 23.6cqi, 11rem)'
-                    : 'clamp(2.3rem, 29.2cqi, 13.8rem)',
+                    ? `calc(clamp(2rem, 23.6cqi, 11rem) * ${portraitFactor.toFixed(2)})`
+                    : `calc(clamp(2.3rem, 29.2cqi, 13.8rem) * ${portraitFactor.toFixed(2)})`,
               }}
               role="timer"
               aria-label={`Tempo rimanente ${clock.minutes} minuti e ${clock.seconds} secondi`}
@@ -181,8 +185,8 @@ export function CircularTimerDisplay({
           style={{
             fontSize:
               clock.minutes.length >= 3
-                ? 'clamp(3rem, min(18.5vw, 50dvh), 26rem)'
-                : 'clamp(3.5rem, min(22.5vw, 56dvh), 32rem)',
+                ? `calc(clamp(3rem, min(18.5vw, 50dvh), 26rem) * ${landscapeFactor.toFixed(2)})`
+                : `calc(clamp(3.5rem, min(22.5vw, 56dvh), 32rem) * ${landscapeFactor.toFixed(2)})`,
           }}
           role="timer"
           aria-label={`Tempo rimanente ${clock.minutes} minuti e ${clock.seconds} secondi`}

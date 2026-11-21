@@ -8,6 +8,7 @@ import type {
   TimerColorMode,
   TimerLayoutMode,
   VoiceProfile,
+  VuMeterMode,
   WorkoutProgram,
 } from '../types/timer';
 
@@ -29,6 +30,7 @@ export const STORAGE_KEYS = {
   ACTIVE_SESSION: 'dojo_timer_active_session_v1',
   BASE_PROGRAMS_V2_MIGRATED: 'dojo_timer_base_programs_v2_migrated_v1',
   EVENT_HAPTICS_ENABLED: 'dojo_timer_event_haptics_v1',
+  VU_METER_MODE: 'dojo_timer_vu_meter_mode_v1',
 } as const;
 
 const LEGACY_DEFAULT_PROGRAM_IDS = new Set([
@@ -74,6 +76,33 @@ function isPlainRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
+export const DIGIT_SCALE_LIMITS = { min: 70, max: 135, default: 100 } as const;
+export const PORTRAIT_DIGIT_SCALE_OFFSET = 5;
+
+export function resolveDigitScaleFactors(digitScale: number = DIGIT_SCALE_LIMITS.default): {
+  clampedPct: number;
+  landscapePct: number;
+  portraitPct: number;
+  landscapeFactor: number;
+  portraitFactor: number;
+} {
+  const clampedPct = Math.min(
+    DIGIT_SCALE_LIMITS.max,
+    Math.max(
+      DIGIT_SCALE_LIMITS.min,
+      Number.isFinite(digitScale) ? Math.round(digitScale) : DIGIT_SCALE_LIMITS.default,
+    ),
+  );
+  const portraitPct = Math.max(50, clampedPct - PORTRAIT_DIGIT_SCALE_OFFSET);
+  return {
+    clampedPct,
+    landscapePct: clampedPct,
+    portraitPct,
+    landscapeFactor: clampedPct / 100,
+    portraitFactor: portraitPct / 100,
+  };
+}
+
 export function getDefaultDisplaySettings(discipline: DisciplineMode = 'JUDO'): DisplaySettings {
   return {
     activeColor: 'YELLOW',
@@ -82,6 +111,7 @@ export function getDefaultDisplaySettings(discipline: DisciplineMode = 'JUDO'): 
     contrastLevel: 80,
     timerLayout: discipline === 'BJJ' ? 'PRO' : 'CLASSIC',
     backgroundOpacity: 50,
+    digitScale: DIGIT_SCALE_LIMITS.default,
     colorMode: 'AUTO',
     solidColor: 'GREEN',
   };
@@ -561,6 +591,12 @@ function sanitizeDisplaySettings(raw: string | null, defaults: DisplaySettings):
         100,
         defaults.backgroundOpacity,
       ),
+      digitScale: clampInt(
+        parsed.digitScale,
+        DIGIT_SCALE_LIMITS.min,
+        DIGIT_SCALE_LIMITS.max,
+        defaults.digitScale,
+      ),
       colorMode,
       solidColor,
     };
@@ -607,6 +643,26 @@ export function loadEventHapticsEnabled(): boolean {
 
 export function saveEventHapticsEnabled(enabled: boolean): void {
   safeSetItem(STORAGE_KEYS.EVENT_HAPTICS_ENABLED, enabled ? '1' : '0');
+}
+
+export const DEFAULT_VU_METER_MODE: VuMeterMode = 'LOCAL_PLAYER';
+const VALID_VU_METER_MODES: readonly VuMeterMode[] = [
+  'OFF',
+  'LOCAL_PLAYER',
+  'SESSION_VISUALIZER',
+  'PLAYBACK_CAPTURE',
+];
+
+export function loadVuMeterMode(): VuMeterMode {
+  const raw = safeGetItem(STORAGE_KEYS.VU_METER_MODE);
+  if (raw && (VALID_VU_METER_MODES as readonly string[]).includes(raw)) {
+    return raw as VuMeterMode;
+  }
+  return DEFAULT_VU_METER_MODE;
+}
+
+export function saveVuMeterMode(mode: VuMeterMode): void {
+  safeSetItem(STORAGE_KEYS.VU_METER_MODE, mode);
 }
 
 export interface ExportPayload {

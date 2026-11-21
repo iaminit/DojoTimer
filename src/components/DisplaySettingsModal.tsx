@@ -5,6 +5,7 @@ import { useDialogFocusTrap } from '../hooks/useDialogFocusTrap';
 import { useNativeBackHandler } from '../hooks/useNativeBackHandler';
 import { triggerButtonFeedback } from '../services/haptics';
 import { soundEngine } from '../services/soundEngine';
+import { DIGIT_SCALE_LIMITS, resolveDigitScaleFactors } from '../services/storage';
 import type {
   DisciplineMode,
   DisplaySettings,
@@ -28,6 +29,7 @@ const LAYOUT_MODE_OPTIONS: Array<{
 
 const SOLID_COLOR_ORDER: readonly SolidColorKey[] = ['RED', 'GREEN', 'ORANGE', 'AZURE'];
 const OPACITY_QUICK_PRESETS: readonly number[] = [0, 20, 50, 100];
+const DIGIT_SCALE_QUICK_PRESETS: readonly number[] = [80, 100, 120, 135];
 
 interface DisplaySettingsModalProps {
   isOpen: boolean;
@@ -70,6 +72,11 @@ export function DisplaySettingsModal({
   const accentHex = discipline === 'BJJ' ? '#FF9100' : '#FFD600';
   const labels = DISCIPLINES[discipline].labels;
   const opacityAlpha = (Math.min(100, Math.max(0, settings.backgroundOpacity)) / 100).toFixed(2);
+  const {
+    clampedPct: clampedDigitScale,
+    portraitPct: portraitDigitScale,
+    portraitFactor: previewDigitFactor,
+  } = resolveDigitScaleFactors(settings.digitScale);
   const colorOverride = { colorMode: settings.colorMode, solidColor: settings.solidColor };
 
   const exampleClassicTokens = resolveVisualTheme('WORK', settings, discipline, 0.55);
@@ -312,6 +319,68 @@ export function DisplaySettingsModal({
               })}
             </div>
 
+            {/* Digit Size Slider with Live Simulation in the Preview Cards below */}
+            <div className="mt-1 flex flex-col gap-3 border-t border-white/10 pt-4">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex flex-col">
+                  <span className="whitespace-nowrap text-xs font-extrabold tracking-[0.12em] text-white uppercase sm:text-sm">
+                    GRANDEZZA NUMERI TIMER
+                  </span>
+                  <span className="text-[11px] font-semibold text-slate-400">
+                    Orizzontale {clampedDigitScale}% • Verticale {portraitDigitScale}% (-5%)
+                  </span>
+                </div>
+                <span
+                  className="tabular-digits rounded-full border border-white/20 bg-black px-3 py-1 text-sm font-extrabold"
+                  style={{ color: accentHex }}
+                >
+                  {clampedDigitScale}%
+                </span>
+              </div>
+
+              <input
+                type="range"
+                min={DIGIT_SCALE_LIMITS.min}
+                max={DIGIT_SCALE_LIMITS.max}
+                step={5}
+                value={clampedDigitScale}
+                onChange={(e) => {
+                  soundEngine.unlock();
+                  onUpdateSettings({
+                    ...settings,
+                    digitScale: Number(e.target.value),
+                  });
+                }}
+                className="h-2.5 w-full cursor-pointer accent-yellow-400"
+                aria-label="Grandezza Numeri Timer"
+                style={{ accentColor: accentHex }}
+              />
+
+              <div className="grid grid-cols-4 gap-2">
+                {DIGIT_SCALE_QUICK_PRESETS.map((pct) => {
+                  const isPresetActive = clampedDigitScale === pct;
+                  return (
+                    <button
+                      key={pct}
+                      type="button"
+                      onClick={() => {
+                        soundEngine.unlock();
+                        triggerButtonFeedback('soft');
+                        onUpdateSettings({ ...settings, digitScale: pct });
+                      }}
+                      className={`tabular-digits min-h-[34px] rounded-lg border text-xs font-extrabold tracking-[0.06em] transition-colors cursor-pointer ${
+                        isPresetActive
+                          ? 'border-white/70 bg-white text-black'
+                          : 'border-white/15 bg-black text-slate-300 hover:border-white/35 hover:text-white'
+                      }`}
+                    >
+                      {pct}%{pct === 100 ? ' • DEFAULT' : ''}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
             {/* Side-by-side Live Examples */}
             <div className="grid grid-cols-2 gap-3 pt-1">
               {/* Example 1: Modalità 1 Cerchio Classico */}
@@ -351,7 +420,7 @@ export function DisplaySettingsModal({
 
                   {/* Mini black circle with water tank & ring */}
                   <div
-                    className="relative z-10 flex h-24 w-24 items-center justify-center overflow-hidden rounded-full border-[3px] bg-black"
+                    className="relative z-10 flex h-24 w-24 items-center justify-center rounded-full border-[3px] bg-black"
                     style={{
                       borderColor: exampleClassicTokens.hex,
                       boxShadow: `0 0 14px rgba(${exampleClassicTokens.rgb}, 0.35)`,
@@ -359,8 +428,11 @@ export function DisplaySettingsModal({
                   >
                     <CircularWaterTank rgb={exampleClassicTokens.rgb} fillProgress={0.55} />
                     <span
-                      className="font-timer tabular-digits timer-digits-luminescent relative z-10 text-xl font-extrabold leading-none tracking-[-0.02em] text-white"
-                      style={{ ['--digit-stroke' as string]: '1.8px' }}
+                      className="font-timer tabular-digits timer-digits-luminescent relative z-10 font-extrabold leading-none tracking-[-0.02em] text-white transition-[font-size] duration-100"
+                      style={{
+                        fontSize: `${(22 * previewDigitFactor).toFixed(1)}px`,
+                        ['--digit-stroke' as string]: '1.8px',
+                      }}
                     >
                       02:41
                     </span>
@@ -427,8 +499,9 @@ export function DisplaySettingsModal({
                     <div className="grid w-full grid-cols-[12px_1fr_12px] items-baseline">
                       <span aria-hidden="true" />
                       <span
-                        className="tabular-digits justify-self-center text-[30px] font-bold leading-[0.8] tracking-[0.02em]"
+                        className="tabular-digits justify-self-center font-bold leading-[0.8] tracking-[0.02em] transition-[font-size] duration-100"
                         style={{
+                          fontSize: `${(30 * previewDigitFactor).toFixed(1)}px`,
                           color: 'rgba(255, 255, 255, 0.1)',
                           WebkitTextFillColor: 'rgba(255, 255, 255, 0.1)',
                           WebkitTextStroke: '1.5px rgba(255, 255, 255, 0.94)',
@@ -455,8 +528,9 @@ export function DisplaySettingsModal({
                     <div className="grid w-full grid-cols-[12px_1fr_12px] items-baseline">
                       <span aria-hidden="true" />
                       <span
-                        className="tabular-digits justify-self-center text-[38px] font-bold leading-[0.8] tracking-[0.015em] text-white"
+                        className="tabular-digits justify-self-center font-bold leading-[0.8] tracking-[0.015em] text-white transition-[font-size] duration-100"
                         style={{
+                          fontSize: `${(38 * previewDigitFactor).toFixed(1)}px`,
                           paintOrder: 'stroke fill',
                           WebkitTextStroke: '2.2px rgba(0, 0, 0, 0.95)',
                           filter: 'drop-shadow(0 1px 4px rgba(0,0,0,0.92)) drop-shadow(0 0 8px rgba(255,255,255,0.45))',

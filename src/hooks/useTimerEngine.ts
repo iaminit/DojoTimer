@@ -9,12 +9,14 @@ import {
   getNextPhaseState,
   getPrevPhaseState,
   resolveEdgeCountdownCue,
+  restartCurrentPhaseState,
   type AudioCue,
   type QuickPresetOptions,
   type TimerEngineState,
 } from '../engine/timerMachine';
-import { soundEngine } from '../services/soundEngine';
+import { HAJIME_GONG_DELAY_SEC, soundEngine } from '../services/soundEngine';
 import type { DisciplineMode, VisualTimerState, WorkoutProgram } from '../types/timer';
+import { MAX_GONG_CLIP_IMPACT_MS } from '../utils/gongClips';
 import { shouldCommitTimerFrame } from '../utils/timerFrameCommit';
 import { useWakeLock } from './useWakeLock';
 
@@ -58,6 +60,7 @@ export interface UseTimerEngineResult {
   reset: () => void;
   skipForward: () => void;
   skipBackward: () => void;
+  restartCurrentRound: () => void;
   restartSession: () => void;
   beginRestScrub: () => void;
   scrubRestProgress: (progress: number) => void;
@@ -110,6 +113,7 @@ export function useTimerEngine(
   }
   const lastCountdownBeepKeyRef = useRef<string>('');
   const lastWarningKeyRef = useRef<string>(initialWarningKeyRef.current);
+  const lastGongPreCueKeyRef = useRef<string>('');
   const isScrubbingRestRef = useRef<boolean>(false);
 
   const isRunning = !state.isPaused && state.phase !== 'IDLE' && state.phase !== 'FINISHED';
@@ -138,6 +142,8 @@ export function useTimerEngine(
   const resetEdgeDetectors = useCallback(() => {
     lastCountdownBeepKeyRef.current = '';
     lastWarningKeyRef.current = '';
+    lastGongPreCueKeyRef.current = '';
+    soundEngine.cancelGongVisual();
   }, []);
 
   const checkEdgeAudio = useCallback((current: TimerEngineState) => {
@@ -150,6 +156,26 @@ export function useTimerEngine(
     if (countdownCue && lastCountdownBeepKeyRef.current !== countdownCue.key) {
       lastCountdownBeepKeyRef.current = countdownCue.key;
       soundEngine.playPrepCountdownSecond(countdownCue.sec);
+    }
+
+    // Pre-cue cinematografico dell'animazione gong (Karateka/Sumotori/Judoka):
+    // avvia il caricamento prima dello 00:00 così il colpo impatta al millisecondo con `gong.mp3`.
+    const leadsIntoGong =
+      current.phase === 'PREP' ||
+      (current.phase === 'REST' && current.currentRound < current.program.rounds);
+    if (leadsIntoGong && MAX_GONG_CLIP_IMPACT_MS > 0 && current.remainingMs > 0) {
+      const gongDelayAfterZeroMs =
+        soundEngine.getMode() === 'VOICE_GONG' ? Math.round(HAJIME_GONG_DELAY_SEC * 1000) : 0;
+      const msUntilGong = current.remainingMs + gongDelayAfterZeroMs;
+      const preCueKey = `${current.phase}-${current.currentRound}`;
+      if (msUntilGong <= MAX_GONG_CLIP_IMPACT_MS && lastGongPreCueKeyRef.current !== preCueKey) {
+        lastGongPreCueKeyRef.current = preCueKey;
+        soundEngine.emitGongVisualCue(msUntilGong, preCueKey);
+      } else if (msUntilGong > MAX_GONG_CLIP_IMPACT_MS + 400 && lastGongPreCueKeyRef.current === preCueKey) {
+        // Se l'utente ha riportato indietro lo slider del recupero, annulla e riabilita il pre-cue
+        lastGongPreCueKeyRef.current = '';
+        soundEngine.cancelGongVisual();
+      }
     }
 
     // Ring once when entering the round's warning window.
@@ -302,6 +328,8 @@ export function useTimerEngine(
       return;
     }
     soundEngine.stopAllVoice();
+    soundEngine.cancelGongVisual();
+    lastGongPreCueKeyRef.current = '';
     const frozenMs = Math.max(1, phaseEndPerfRef.current - performance.now());
     const pausedState: TimerEngineState = {
       ...current,
@@ -342,6 +370,8 @@ export function useTimerEngine(
     isScrubbingRestRef.current = false;
     soundEngine.unlock();
     soundEngine.stopAllVoice();
+    soundEngine.cancelGongVisual();
+    lastGongPreCueKeyRef.current = '';
     resetEdgeDetectors();
     phaseEndPerfRef.current = 0;
     const current = liveStateRef.current;
@@ -349,10 +379,38 @@ export function useTimerEngine(
     commitState(idle, true);
   }, [commitState, resetEdgeDetectors]);
 
+  const restartCurrentRound = useCallback(() => {
+    isScrubbingRestRef.current = false;
+    soundEngine.unlock();
+    soundEngine.stopAllVoice();
+    soundEngine.cancelGongVisual();
+    lastGongPreCueKeyRef.current = '';
+    resetEdgeDetectors();
+    const current = liveStateRef.current;
+    const restarted = restartCurrentPhaseState(current);
+    const shouldStayPaused =
+      current.isPaused && restarted.phase !== 'IDLE' && restarted.phase !== 'FINISHED';
+    const nextState: TimerEngineState = {
+      ...restarted,
+      isPaused: shouldStayPaused,
+    };
+    if (!shouldStayPaused && nextState.phase !== 'IDLE' && nextState.phase !== 'FINISHED') {
+      phaseEndPerfRef.current = performance.now() + nextState.remainingMs;
+    } else {
+      phaseEndPerfRef.current = 0;
+    }
+    commitState(nextState, true);
+    if (!shouldStayPaused) {
+      checkEdgeAudio(nextState);
+    }
+  }, [checkEdgeAudio, commitState, resetEdgeDetectors]);
+
   const restartSession = useCallback(() => {
     isScrubbingRestRef.current = false;
     soundEngine.unlock();
     soundEngine.stopAllVoice();
+    soundEngine.cancelGongVisual();
+    lastGongPreCueKeyRef.current = '';
     resetEdgeDetectors();
     const current = liveStateRef.current;
     const idle = createIdleState(current.program, current.activeQuickPresetMinutes);
@@ -378,6 +436,8 @@ export function useTimerEngine(
     isScrubbingRestRef.current = false;
     soundEngine.unlock();
     soundEngine.stopAllVoice();
+    soundEngine.cancelGongVisual();
+    lastGongPreCueKeyRef.current = '';
     const current = liveStateRef.current;
     if (current.phase === 'FINISHED') {
       return;
@@ -405,6 +465,8 @@ export function useTimerEngine(
     isScrubbingRestRef.current = false;
     soundEngine.unlock();
     soundEngine.stopAllVoice();
+    soundEngine.cancelGongVisual();
+    lastGongPreCueKeyRef.current = '';
     const current = liveStateRef.current;
     if (current.phase === 'IDLE') {
       return;
@@ -560,6 +622,7 @@ export function useTimerEngine(
     reset,
     skipForward,
     skipBackward,
+    restartCurrentRound,
     restartSession,
     beginRestScrub,
     scrubRestProgress,

@@ -79,7 +79,7 @@ const PRODUCTION_CSP = [
   "img-src 'self' data: blob:",
   "font-src 'self' data:",
   "media-src 'self' blob:",
-  "connect-src 'self'",
+  "connect-src 'self' https://1ms.it",
   "worker-src 'self'",
   "object-src 'none'",
   "base-uri 'self'",
@@ -125,6 +125,26 @@ export default defineConfig({
         );
       },
     },
+    {
+      name: 'dojo-timer-version-json',
+      apply: 'build',
+      generateBundle() {
+        this.emitFile({
+          type: 'asset',
+          fileName: 'version.json',
+          source: JSON.stringify(
+            {
+              version: buildInfo.version,
+              buildNumber: buildInfo.buildNumber,
+              commitSha: buildInfo.commitSha,
+              apkUrl: 'https://1ms.it/timer/DojoTimer.apk',
+            },
+            null,
+            2,
+          ),
+        });
+      },
+    },
     react(),
     tailwindcss(),
     VitePWA({
@@ -167,9 +187,12 @@ export default defineConfig({
         'audio/arale/count-10.mp3',
         'logos/judo-logo.jpg',
         'logos/bjj-logo.png',
+        'video/gong-karateka.mp4',
+        'video/gong-judoka.mp4',
+        'video/gong-sumotori.mp4',
       ],
       workbox: {
-        globPatterns: ['**/*.{js,css,html,svg,png,jpg,jpeg,ico,woff,woff2,mp3}'],
+        globPatterns: ['**/*.{js,css,html,svg,png,jpg,jpeg,ico,woff,woff2,mp3,mp4}'],
         navigateFallbackDenylist: [/\.apk$/i],
       },
       manifest: {

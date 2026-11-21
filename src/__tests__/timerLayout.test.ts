@@ -9,13 +9,17 @@ import { soundEngine } from '../services/soundEngine';
 import {
   DEFAULT_DISPLAY_SETTINGS,
   DEFAULT_EVENT_HAPTICS_ENABLED,
+  DEFAULT_VU_METER_MODE,
   getDefaultDisplaySettings,
   loadDisplaySettings,
   loadDisplaySettingsForDiscipline,
   loadEventHapticsEnabled,
+  loadVuMeterMode,
+  resolveDigitScaleFactors,
   saveDisplaySettings,
   saveDisplaySettingsForDiscipline,
   saveEventHapticsEnabled,
+  saveVuMeterMode,
   STORAGE_KEYS,
 } from '../services/storage';
 import {
@@ -58,6 +62,7 @@ describe('DisplaySettings persistence (per-discipline defaults, 50% opacity, sol
   it('defaults Judo to CLASSIC @ 50% opacity and BJJ to PRO @ 50% opacity', () => {
     expect(DEFAULT_DISPLAY_SETTINGS.timerLayout).toBe('CLASSIC');
     expect(DEFAULT_DISPLAY_SETTINGS.backgroundOpacity).toBe(50);
+    expect(DEFAULT_DISPLAY_SETTINGS.digitScale).toBe(100);
     expect(DEFAULT_DISPLAY_SETTINGS.colorMode).toBe('AUTO');
     expect(DEFAULT_DISPLAY_SETTINGS.solidColor).toBe('GREEN');
 
@@ -124,6 +129,7 @@ describe('DisplaySettings persistence (per-discipline defaults, 50% opacity, sol
         colorMode: 'RAINBOW',
         solidColor: 'PURPLE',
         backgroundOpacity: 150,
+        digitScale: 240,
       }),
     );
     const sanitizedHigh = loadDisplaySettings();
@@ -131,15 +137,40 @@ describe('DisplaySettings persistence (per-discipline defaults, 50% opacity, sol
     expect(sanitizedHigh.colorMode).toBe('AUTO');
     expect(sanitizedHigh.solidColor).toBe('GREEN');
     expect(sanitizedHigh.backgroundOpacity).toBe(100);
+    expect(sanitizedHigh.digitScale).toBe(135);
 
     window.localStorage.setItem(
       STORAGE_KEYS.DISPLAY_SETTINGS,
       JSON.stringify({
         ...DEFAULT_DISPLAY_SETTINGS,
         backgroundOpacity: -10,
+        digitScale: 20,
       }),
     );
     expect(loadDisplaySettings().backgroundOpacity).toBe(0);
+    expect(loadDisplaySettings().digitScale).toBe(70);
+
+    expect(resolveDigitScaleFactors(135)).toEqual({
+      clampedPct: 135,
+      landscapePct: 135,
+      portraitPct: 130,
+      landscapeFactor: 1.35,
+      portraitFactor: 1.3,
+    });
+    expect(resolveDigitScaleFactors(100)).toEqual({
+      clampedPct: 100,
+      landscapePct: 100,
+      portraitPct: 95,
+      landscapeFactor: 1,
+      portraitFactor: 0.95,
+    });
+    expect(resolveDigitScaleFactors(70)).toEqual({
+      clampedPct: 70,
+      landscapePct: 70,
+      portraitPct: 65,
+      landscapeFactor: 0.7,
+      portraitFactor: 0.65,
+    });
   });
 
   it('persists PRO layout, custom opacity, and AZURE solid color round-trip', () => {
@@ -376,6 +407,15 @@ describe('Event haptics preference and synchronized vibration patterns', () => {
 
     saveEventHapticsEnabled(true);
     expect(loadEventHapticsEnabled()).toBe(true);
+
+    expect(DEFAULT_VU_METER_MODE).toBe('LOCAL_PLAYER');
+    expect(loadVuMeterMode()).toBe('LOCAL_PLAYER');
+    saveVuMeterMode('PLAYBACK_CAPTURE');
+    expect(loadVuMeterMode()).toBe('PLAYBACK_CAPTURE');
+    saveVuMeterMode('SESSION_VISUALIZER');
+    expect(loadVuMeterMode()).toBe('SESSION_VISUALIZER');
+    saveVuMeterMode('OFF');
+    expect(loadVuMeterMode()).toBe('OFF');
   });
 
   it('triggers synchronized vibration patterns when enabled and stays silent when disabled', () => {

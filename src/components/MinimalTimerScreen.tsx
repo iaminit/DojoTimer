@@ -1,7 +1,19 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
-import { ChevronLeft, Pause, Play, RefreshCw } from 'lucide-react';
 import {
+  CheckCircle2,
+  ChevronLeft,
+  Pause,
+  Play,
+  RefreshCw,
+  RotateCcw,
+  SkipBack,
+  SkipForward,
+  VolumeX,
+  X,
+} from 'lucide-react';
+import {
+  computeSessionSummary,
   REST_SCRUB_MIN_REMAINING_MS,
   type TimerEngineState,
 } from '../engine/timerMachine';
@@ -14,9 +26,10 @@ import {
   triggerRestScrubRelease,
   triggerRestScrubStep,
 } from '../services/haptics';
+import { getNativeMediaVolumePercent } from '../services/nativeAndroid';
 import { soundEngine, type SoundImpactEvent } from '../services/soundEngine';
-import type { SolidColorKey, TimerColorMode, TimerLayoutMode } from '../types/timer';
-import { getClockDisplay } from '../utils/formatTime';
+import type { SolidColorKey, TimerColorMode, TimerLayoutMode, VuMeterMode } from '../types/timer';
+import { formatDurationHuman, getClockDisplay } from '../utils/formatTime';
 import { resolveProTimerPalette } from '../utils/proTimerTheme';
 import {
   resolveTimerPhaseBannerLabel,
@@ -25,6 +38,8 @@ import {
 import { CircularTimerDisplay } from './CircularTimerDisplay';
 import { ClassicWaveBackground } from './ClassicWaveBackground';
 import { GongRippleOverlay } from './GongRippleOverlay';
+import { GongVideoBackdrop } from './GongVideoBackdrop';
+import { LedSpectrumMeter } from './LedSpectrumMeter';
 import { RoundSegmentsBar } from './RoundSegmentsBar';
 import { UltraModernTimerDisplay } from './UltraModernTimerDisplay';
 
@@ -48,6 +63,8 @@ interface MinimalTimerScreenProps {
   theme: VisualThemeTokens;
   timerLayout?: TimerLayoutMode;
   backgroundOpacity?: number;
+  digitScale?: number;
+  vuMeterMode?: VuMeterMode;
   colorMode?: TimerColorMode;
   solidColor?: SolidColorKey;
   fillProgress: number;
@@ -55,6 +72,9 @@ interface MinimalTimerScreenProps {
   onPause: () => void;
   onResume: () => void;
   onTogglePause: () => void;
+  onRestartCurrentRound?: () => void;
+  onSkipForward?: () => void;
+  onSkipBackward?: () => void;
   onRestartSession: () => void;
   onBeginRestScrub?: () => void;
   onScrubRestProgress?: (progress: number) => void;
@@ -82,6 +102,8 @@ export function MinimalTimerScreen({
   theme,
   timerLayout = 'CLASSIC',
   backgroundOpacity = 50,
+  digitScale = 100,
+  vuMeterMode = 'OFF',
   colorMode = 'AUTO',
   solidColor = 'GREEN',
   fillProgress,
@@ -89,6 +111,9 @@ export function MinimalTimerScreen({
   onPause,
   onResume,
   onTogglePause,
+  onRestartCurrentRound,
+  onSkipForward,
+  onSkipBackward,
   onRestartSession,
   onBeginRestScrub,
   onScrubRestProgress,
@@ -109,14 +134,26 @@ export function MinimalTimerScreen({
   );
   const currentTime = useCurrentClock();
   const [gongRippleKey, setGongRippleKey] = useState(0);
+  const [isGongVideoActive, setIsGongVideoActive] = useState(false);
   const mainRef = useRef<HTMLElement | null>(null);
   const impactShakeTimeoutRef = useRef<number | null>(null);
   const [isExitModalOpen, setIsExitModalOpen] = useState(false);
+  const [isRoundMenuOpen, setIsRoundMenuOpen] = useState(false);
+  const [isMediaMuted, setIsMediaMuted] = useState(false);
+  const [muteWarningDismissed, setMuteWarningDismissed] = useState(false);
   const wasRunningBeforeExitRef = useRef(false);
+  const wasRunningBeforeRoundMenuRef = useRef(false);
   const exitDialogRef = useRef<HTMLDivElement | null>(null);
+  const roundMenuDialogRef = useRef<HTMLDivElement | null>(null);
   const backBtnRef = useRef<HTMLButtonElement | null>(null);
+  const restartBtnRef = useRef<HTMLButtonElement | null>(null);
   const confirmYesBtnRef = useRef<HTMLButtonElement | null>(null);
   const cancelNoBtnRef = useRef<HTMLButtonElement | null>(null);
+  const restartRoundBtnRef = useRef<HTMLButtonElement | null>(null);
+  const sessionSummary = useMemo(
+    () => computeSessionSummary(state.program),
+    [state.program],
+  );
 
   const proTrackRef = useRef<HTMLDivElement | null>(null);
   const fillBarRef = useRef<HTMLDivElement | null>(null);
@@ -127,7 +164,11 @@ export function MinimalTimerScreen({
   const themeRgbRef = useRef<string>(theme.rgb);
   themeRgbRef.current = theme.rgb;
   const isRestScrubActive =
-    !isPipMode && state.phase === 'REST' && state.phaseDurationMs > 0 && !isExitModalOpen;
+    !isPipMode &&
+    state.phase === 'REST' &&
+    state.phaseDurationMs > 0 &&
+    !isExitModalOpen &&
+    !isRoundMenuOpen;
 
   const handleOpenExitModal = useCallback(() => {
     const wasRunning = !state.isPaused && state.phase !== 'IDLE' && state.phase !== 'FINISHED';
@@ -152,11 +193,106 @@ export function MinimalTimerScreen({
     onConfirmExit();
   }, [onConfirmExit]);
 
+  const handleOpenRoundMenu = useCallback(() => {
+    if (isFinished) {
+      onRestartSession();
+      return;
+    }
+    const wasRunning = !state.isPaused && state.phase !== 'IDLE' && state.phase !== 'FINISHED';
+    wasRunningBeforeRoundMenuRef.current = wasRunning;
+    if (wasRunning) {
+      onPause();
+    }
+    setIsRoundMenuOpen(true);
+  }, [isFinished, onPause, onRestartSession, state.isPaused, state.phase]);
+
+  const handleCancelRoundMenu = useCallback(() => {
+    setIsRoundMenuOpen(false);
+    if (wasRunningBeforeRoundMenuRef.current) {
+      wasRunningBeforeRoundMenuRef.current = false;
+      onResume();
+    }
+  }, [onResume]);
+
+  const handleRestartCurrentRoundAction = useCallback(() => {
+    const shouldResume = wasRunningBeforeRoundMenuRef.current;
+    wasRunningBeforeRoundMenuRef.current = false;
+    setIsRoundMenuOpen(false);
+    onRestartCurrentRound?.();
+    if (shouldResume) {
+      onResume();
+    }
+  }, [onRestartCurrentRound, onResume]);
+
+  const handleSkipBackwardAction = useCallback(() => {
+    const shouldResume = wasRunningBeforeRoundMenuRef.current;
+    wasRunningBeforeRoundMenuRef.current = false;
+    setIsRoundMenuOpen(false);
+    onSkipBackward?.();
+    if (shouldResume) {
+      onResume();
+    }
+  }, [onResume, onSkipBackward]);
+
+  const handleSkipForwardAction = useCallback(() => {
+    const shouldResume = wasRunningBeforeRoundMenuRef.current;
+    wasRunningBeforeRoundMenuRef.current = false;
+    setIsRoundMenuOpen(false);
+    onSkipForward?.();
+    if (shouldResume) {
+      onResume();
+    }
+  }, [onResume, onSkipForward]);
+
+  const handleRestartSessionAction = useCallback(() => {
+    const shouldResume = wasRunningBeforeRoundMenuRef.current;
+    wasRunningBeforeRoundMenuRef.current = false;
+    setIsRoundMenuOpen(false);
+    onRestartSession();
+    if (shouldResume) {
+      onResume();
+    }
+  }, [onRestartSession, onResume]);
+
+  // Monitor native Android media volume so coaches get a subtle warning if volume is at 0%
+  useEffect(() => {
+    const checkVolume = () => {
+      const pct = getNativeMediaVolumePercent();
+      if (pct === null) {
+        setIsMediaMuted(false);
+        return;
+      }
+      if (pct === 0) {
+        setIsMediaMuted(true);
+      } else {
+        setIsMediaMuted(false);
+        setMuteWarningDismissed(false);
+      }
+    };
+
+    checkVolume();
+    window.addEventListener('focus', checkVolume);
+    document.addEventListener('visibilitychange', checkVolume);
+    const pollId = isMediaMuted ? window.setInterval(checkVolume, 1500) : null;
+
+    return () => {
+      window.removeEventListener('focus', checkVolume);
+      document.removeEventListener('visibilitychange', checkVolume);
+      if (pollId !== null) {
+        window.clearInterval(pollId);
+      }
+    };
+  }, [isMediaMuted]);
+
   useNativeBackHandler(
     true,
     () => {
-      if (isExitModalOpen) {
+      if (isRoundMenuOpen) {
+        handleCancelRoundMenu();
+      } else if (isExitModalOpen) {
         handleCancelExit();
+      } else if (isFinished) {
+        onConfirmExit();
       } else {
         handleOpenExitModal();
       }
@@ -215,6 +351,14 @@ export function MinimalTimerScreen({
     initialFocusRef: cancelNoBtnRef,
     fallbackFocusRef: backBtnRef,
     onEscape: handleCancelExit,
+  });
+
+  useDialogFocusTrap({
+    isOpen: isRoundMenuOpen,
+    containerRef: roundMenuDialogRef,
+    initialFocusRef: restartRoundBtnRef,
+    fallbackFocusRef: restartBtnRef,
+    onEscape: handleCancelRoundMenu,
   });
 
   const clearImpactShake = useCallback(() => {
@@ -430,19 +574,23 @@ export function MinimalTimerScreen({
   );
 
   useEffect(() => {
-    if (isExitModalOpen) {
+    if (isExitModalOpen || isRoundMenuOpen) {
       return;
     }
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.code === 'Escape') {
         if (e.repeat) return;
         e.preventDefault();
-        handleOpenExitModal();
+        if (isFinished) {
+          onConfirmExit();
+        } else {
+          handleOpenExitModal();
+        }
       }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [handleOpenExitModal, isExitModalOpen]);
+  }, [handleOpenExitModal, isExitModalOpen, isFinished, isRoundMenuOpen, onConfirmExit]);
 
   if (isPipMode) {
     const pipAccentHex = isProLayout ? proPalette.hex : theme.hex;
@@ -611,6 +759,13 @@ export function MinimalTimerScreen({
         </div>
       )}
 
+      {/* 1a. Cinematic Gong Strike Video Backdrop (random Karateka / Judoka / Sumotori) */}
+      <GongVideoBackdrop
+        isPaused={state.isPaused}
+        isFinished={isFinished}
+        onActiveChange={setIsGongVideoActive}
+      />
+
       {/* 1b. Hajime Gong Concentric Wave Ripple (Proposta A) */}
       <GongRippleOverlay
         triggerKey={gongRippleKey}
@@ -753,17 +908,46 @@ export function MinimalTimerScreen({
         </header>
       )}
 
-      {/* 3. Modalità 1 (Classic Circle / Landscape) vs Modalità 2 (Versione B Scoreboard Pro) */}
-      {isProLayout ? (
-        <UltraModernTimerDisplay state={state} palette={proPalette} />
-      ) : (
-        <CircularTimerDisplay
-          state={state}
-          theme={theme}
-          fillProgress={fillProgress}
-          subscribeFillProgress={subscribeFillProgress}
-        />
+      {/* 2b. Subtle Zero-Volume Android Warning Pill */}
+      {isMediaMuted && !muteWarningDismissed && !isFinished && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="relative z-30 mt-2 inline-flex max-w-[92vw] items-center gap-2 rounded-full border border-amber-400/55 bg-black/88 px-3.5 py-1.5 text-[11px] font-extrabold tracking-[0.06em] text-amber-300 shadow-lg uppercase sm:text-xs"
+        >
+          <VolumeX className="h-3.5 w-3.5 shrink-0 text-amber-400" />
+          <span className="truncate">Volume media a 0 — alza per sentire il gong</span>
+          <button
+            type="button"
+            onClick={() => setMuteWarningDismissed(true)}
+            aria-label="Chiudi avviso volume"
+            className="ml-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-amber-200/80 hover:bg-white/10 hover:text-white cursor-pointer"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
       )}
+
+      {/* 3. Modalità 1 (Classic Circle / Landscape) vs Modalità 2 (Versione B Scoreboard Pro) */}
+      <div
+        className="relative z-10 flex min-h-0 w-full flex-1 flex-col items-center transition-opacity ease-out"
+        style={{
+          opacity: isGongVideoActive ? 0.1 : 1,
+          transitionDuration: isGongVideoActive ? '200ms' : '380ms',
+        }}
+      >
+        {isProLayout ? (
+          <UltraModernTimerDisplay state={state} palette={proPalette} digitScale={digitScale} />
+        ) : (
+          <CircularTimerDisplay
+            state={state}
+            theme={theme}
+            digitScale={digitScale}
+            fillProgress={fillProgress}
+            subscribeFillProgress={subscribeFillProgress}
+          />
+        )}
+      </div>
 
       {/* 4. Pause 50% Dimming Veil (preserves active phase color underneath) */}
       {state.isPaused && (
@@ -774,7 +958,7 @@ export function MinimalTimerScreen({
       )}
 
       {/* 5. Prominent Central Play Button while Paused */}
-      {state.isPaused && !isExitModalOpen && (
+      {state.isPaused && !isExitModalOpen && !isRoundMenuOpen && (
         <div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center">
           <button
             type="button"
@@ -784,6 +968,77 @@ export function MinimalTimerScreen({
           >
             <Play className="h-14 w-14 translate-x-1 stroke-[2.2] text-white sm:h-18 sm:w-18 [@media(orientation:landscape)_and_(max-height:520px)]:h-12 [@media(orientation:landscape)_and_(max-height:520px)]:w-12" />
           </button>
+        </div>
+      )}
+
+      {/* 5b. Finished Session Completion Summary Overlay (SOREMADE / FINE SESSIONE) */}
+      {isFinished && !isExitModalOpen && (
+        <div
+          className="absolute inset-0 z-30 flex items-center justify-center bg-black/62 px-5 py-4 backdrop-blur-[2px]"
+          data-testid="session-finished-summary"
+        >
+          <div
+            className="flex w-full max-w-sm flex-col items-center gap-4 rounded-3xl border-2 bg-neutral-950/95 p-6 text-center text-white shadow-2xl sm:p-7"
+            style={{
+              borderColor: `rgba(${isProLayout ? proPalette.rgb : theme.rgb}, 0.65)`,
+              boxShadow: `0 0 42px rgba(${isProLayout ? proPalette.rgb : theme.rgb}, 0.25), 0 18px 40px rgba(0, 0, 0, 0.9)`,
+            }}
+          >
+            <div className="flex flex-col items-center gap-1.5">
+              <CheckCircle2
+                className="h-10 w-10"
+                style={{ color: isProLayout ? proPalette.hex : theme.hex }}
+              />
+              <h2
+                className="text-2xl font-extrabold tracking-[0.14em] uppercase sm:text-3xl"
+                style={{ color: isProLayout ? proPalette.hex : theme.hex }}
+              >
+                {phaseBannerLabel}
+              </h2>
+              <p className="max-w-full truncate text-xs font-bold tracking-[0.1em] text-slate-300 uppercase sm:text-sm">
+                {state.program.name}
+              </p>
+            </div>
+
+            <div className="grid w-full grid-cols-2 gap-2.5">
+              <div className="flex flex-col items-center rounded-2xl border border-white/12 bg-black/80 px-3 py-2.5">
+                <span className="text-[10px] font-bold tracking-[0.12em] text-slate-400 uppercase">
+                  ROUND COMPLETATI
+                </span>
+                <span className="tabular-digits mt-0.5 text-lg font-extrabold text-white sm:text-xl">
+                  {sessionSummary.rounds}
+                </span>
+              </div>
+              <div className="flex flex-col items-center rounded-2xl border border-white/12 bg-black/80 px-3 py-2.5">
+                <span className="text-[10px] font-bold tracking-[0.12em] text-slate-400 uppercase">
+                  TEMPO TOTALE
+                </span>
+                <span className="tabular-digits mt-0.5 text-lg font-extrabold text-white sm:text-xl">
+                  {formatDurationHuman(sessionSummary.totalSessionSeconds)}
+                </span>
+              </div>
+            </div>
+
+            <div className="mt-1 flex w-full flex-col gap-2.5">
+              <button
+                type="button"
+                onClick={onRestartSession}
+                className="flex min-h-[52px] w-full items-center justify-center gap-2 rounded-full text-sm font-extrabold tracking-[0.14em] text-black uppercase transition-transform hover:brightness-110 active:scale-[0.98] cursor-pointer"
+                style={{ backgroundColor: isProLayout ? proPalette.hex : theme.hex }}
+              >
+                <RefreshCw className="h-4 w-4 stroke-[2.6]" />
+                <span>RIPARTI</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={onConfirmExit}
+                className="flex min-h-[50px] w-full items-center justify-center rounded-full border-2 border-white/25 bg-black text-sm font-extrabold tracking-[0.14em] text-white uppercase transition-colors hover:border-white/55 hover:bg-white/5 active:scale-[0.98] cursor-pointer"
+              >
+                TORNA AL SETUP
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -798,22 +1053,31 @@ export function MinimalTimerScreen({
           }}
         >
           <button
+            ref={restartBtnRef}
             type="button"
-            onClick={onRestartSession}
-            aria-label="Ricomincia round"
-            title="Riavvia sessione dall'inizio"
+            onClick={handleOpenRoundMenu}
+            aria-label="Controlli round e riavvio"
+            title="Riavvia round, salta o riavvia sessione"
             className="flex h-[56px] w-[56px] shrink-0 items-center justify-center rounded-full border-0 text-white shadow-[0_6px_18px_rgba(0,0,0,0.25)] transition-all hover:brightness-125 active:scale-95 sm:h-[66px] sm:w-[66px] landscape:h-[48px] landscape:w-[48px] [@media(orientation:landscape)_and_(max-height:520px)]:h-[44px] [@media(orientation:landscape)_and_(max-height:520px)]:w-[44px] cursor-pointer"
             style={{ backgroundColor: proPalette.footerControlBg }}
           >
             <RefreshCw className="h-[26px] w-[26px] sm:h-[30px] sm:w-[30px] landscape:h-6 landscape:w-6" />
           </button>
 
-          <RoundSegmentsBar
-            currentRound={state.currentRound}
-            totalRounds={state.program.rounds}
-            phase={state.phase}
-            controlBg={proPalette.footerControlBg}
-          />
+          <div className="flex min-w-0 flex-1 flex-col items-center justify-center gap-1.5">
+            <LedSpectrumMeter
+              mode={vuMeterMode}
+              compact
+              accentHex={proPalette.hex}
+              accentRgb={proPalette.rgb}
+            />
+            <RoundSegmentsBar
+              currentRound={state.currentRound}
+              totalRounds={state.program.rounds}
+              phase={state.phase}
+              controlBg={proPalette.footerControlBg}
+            />
+          </div>
 
           <button
             type="button"
@@ -845,14 +1109,19 @@ export function MinimalTimerScreen({
       ) : (
         <div className="relative z-30 flex w-full max-w-xl landscape:max-w-none landscape:px-0 shrink-0 items-center justify-between gap-4 px-3 sm:px-6">
           <button
+            ref={restartBtnRef}
             type="button"
-            onClick={onRestartSession}
-            aria-label="Reset timer"
-            title="Riavvia sessione dall'inizio"
+            onClick={handleOpenRoundMenu}
+            aria-label="Controlli round e riavvio"
+            title="Riavvia round, salta o riavvia sessione"
             className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full border border-white/20 bg-neutral-900/90 text-white shadow-xl transition-all hover:border-white/50 hover:bg-neutral-800 active:scale-95 sm:h-20 sm:w-20 [@media(orientation:landscape)_and_(max-height:520px)]:h-14 [@media(orientation:landscape)_and_(max-height:520px)]:w-14 cursor-pointer"
           >
             <RefreshCw className="h-7 w-7 sm:h-8 sm:w-8 [@media(orientation:landscape)_and_(max-height:520px)]:h-6 [@media(orientation:landscape)_and_(max-height:520px)]:w-6" />
           </button>
+
+          <div className="flex min-w-0 flex-1 items-center justify-center">
+            <LedSpectrumMeter mode={vuMeterMode} accentHex={theme.hex} accentRgb={theme.rgb} />
+          </div>
 
           <button
             type="button"
@@ -879,6 +1148,84 @@ export function MinimalTimerScreen({
               <Play className="h-7 w-7 translate-x-0.5 sm:h-8 sm:w-8 [@media(orientation:landscape)_and_(max-height:520px)]:h-6 [@media(orientation:landscape)_and_(max-height:520px)]:w-6" />
             )}
           </button>
+        </div>
+      )}
+
+      {/* 7b. Round Control & Restart Sheet (Single Round vs Skip vs Full Session) */}
+      {isRoundMenuOpen && (
+        <div
+          ref={roundMenuDialogRef}
+          className="dojo-scroll fixed inset-0 z-50 flex overflow-y-auto bg-black/80 px-5 py-4 backdrop-blur-xs"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="round-menu-title"
+        >
+          <div className="my-auto mx-auto w-full max-w-sm rounded-3xl border border-white/20 bg-neutral-950 p-6 text-white shadow-2xl sm:p-7 [@media(orientation:landscape)_and_(max-height:520px)]:p-5">
+            <div className="flex flex-col items-center gap-1 text-center">
+              <span className="text-[11px] font-bold tracking-[0.14em] text-slate-400 uppercase">
+                ROUND {state.currentRound} / {state.program.rounds}
+              </span>
+              <h2
+                id="round-menu-title"
+                className="whitespace-nowrap text-lg font-extrabold tracking-wide text-white sm:text-xl"
+              >
+                Controllo Round
+              </h2>
+            </div>
+
+            <div className="mt-5 flex flex-col gap-2.5">
+              <button
+                ref={restartRoundBtnRef}
+                type="button"
+                onClick={handleRestartCurrentRoundAction}
+                className="flex min-h-[52px] w-full items-center justify-center gap-2 rounded-full border-2 bg-black px-4 text-sm font-extrabold tracking-[0.12em] uppercase transition-all hover:bg-white/5 active:scale-[0.98] cursor-pointer"
+                style={{
+                  borderColor: theme.hex,
+                  color: theme.hex,
+                  boxShadow: `0 0 18px rgba(${theme.rgb}, 0.2)`,
+                }}
+              >
+                <RotateCcw className="h-4 w-4 shrink-0" />
+                <span>RIAVVIA ROUND CORRENTE</span>
+              </button>
+
+              <div className="grid grid-cols-2 gap-2.5">
+                <button
+                  type="button"
+                  onClick={handleSkipBackwardAction}
+                  className="flex min-h-[48px] items-center justify-center gap-1.5 rounded-full border border-white/25 bg-black px-3 text-xs font-extrabold tracking-[0.1em] text-white uppercase transition-colors hover:border-white/55 hover:bg-white/5 active:scale-[0.98] cursor-pointer"
+                >
+                  <SkipBack className="h-4 w-4 shrink-0" />
+                  <span>PRECEDENTE</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSkipForwardAction}
+                  className="flex min-h-[48px] items-center justify-center gap-1.5 rounded-full border border-white/25 bg-black px-3 text-xs font-extrabold tracking-[0.1em] text-white uppercase transition-colors hover:border-white/55 hover:bg-white/5 active:scale-[0.98] cursor-pointer"
+                >
+                  <span>SUCCESSIVO</span>
+                  <SkipForward className="h-4 w-4 shrink-0" />
+                </button>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleRestartSessionAction}
+                className="flex min-h-[48px] w-full items-center justify-center gap-2 rounded-full border border-white/20 bg-neutral-900 px-4 text-xs font-extrabold tracking-[0.12em] text-slate-200 uppercase transition-colors hover:border-white/45 hover:text-white active:scale-[0.98] cursor-pointer"
+              >
+                <RefreshCw className="h-4 w-4 shrink-0" />
+                <span>RIAVVIA INTERA SESSIONE</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleCancelRoundMenu}
+                className="mt-1 min-h-[46px] w-full rounded-full border border-white/15 bg-black text-xs font-extrabold tracking-[0.16em] text-slate-400 uppercase transition-colors hover:border-white/40 hover:text-white active:scale-[0.98] cursor-pointer"
+              >
+                ANNULLA
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

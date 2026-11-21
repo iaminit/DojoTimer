@@ -288,6 +288,43 @@ export function advanceWithOvershoot(
   return { nextState: cursor, audioEvents };
 }
 
+export function restartCurrentPhaseState(state: TimerEngineState): TimerEngineState {
+  if (state.phase === 'IDLE' || state.phase === 'FINISHED') {
+    const idle = createIdleState(state.program, state.activeQuickPresetMinutes);
+    return getNextPhaseState(idle).nextState;
+  }
+  const durationMs =
+    state.phase === 'WORK'
+      ? Math.max(1000, state.program.workSeconds * 1000)
+      : state.phase === 'REST'
+        ? Math.max(1000, state.program.restSeconds * 1000)
+        : Math.max(1000, state.program.prepSeconds * 1000);
+  return {
+    ...state,
+    phaseDurationMs: durationMs,
+    remainingMs: durationMs,
+  };
+}
+
+export interface SessionSummaryStats {
+  rounds: number;
+  totalWorkSeconds: number;
+  totalRestSeconds: number;
+  totalSessionSeconds: number;
+}
+
+export function computeSessionSummary(program: WorkoutProgram): SessionSummaryStats {
+  const rounds = Math.max(1, Math.round(program.rounds));
+  const totalWorkSeconds = rounds * Math.max(0, Math.round(program.workSeconds));
+  const totalRestSeconds = Math.max(0, rounds - 1) * Math.max(0, Math.round(program.restSeconds));
+  return {
+    rounds,
+    totalWorkSeconds,
+    totalRestSeconds,
+    totalSessionSeconds: totalWorkSeconds + totalRestSeconds,
+  };
+}
+
 export const REST_SCRUB_MIN_REMAINING_MS = 1000;
 
 /**

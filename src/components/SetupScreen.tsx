@@ -13,6 +13,7 @@ import type {
   QuickSetupConfig,
   TimerLayoutMode,
   VoiceProfile,
+  VuMeterMode,
   WorkoutProgram,
 } from '../types/timer';
 import { formatMMSS } from '../utils/formatTime';
@@ -34,6 +35,8 @@ interface SetupScreenProps {
   onChangeTimerLayout: (layout: TimerLayoutMode) => void;
   eventHapticsEnabled: boolean;
   onChangeEventHapticsEnabled: (enabled: boolean) => void;
+  vuMeterMode: VuMeterMode;
+  onChangeVuMeterMode: (mode: VuMeterMode) => void;
   programs: WorkoutProgram[];
   activeProgramId: string;
   initialEditProgram?: WorkoutProgram | null;
@@ -62,6 +65,8 @@ export function SetupScreen({
   onChangeTimerLayout,
   eventHapticsEnabled,
   onChangeEventHapticsEnabled,
+  vuMeterMode,
+  onChangeVuMeterMode,
   programs,
   activeProgramId,
   initialEditProgram = null,
@@ -514,6 +519,7 @@ export function SetupScreen({
         timerLayout={timerLayout}
         theme={theme}
         eventHapticsEnabled={eventHapticsEnabled}
+        vuMeterMode={vuMeterMode}
         defaultProgramName={defaultProgramName}
         judoCount={judoCount}
         bjjCount={bjjCount}
@@ -522,6 +528,7 @@ export function SetupScreen({
         onChangeVoiceProfile={onChangeVoiceProfile}
         onChangeTimerLayout={onChangeTimerLayout}
         onChangeEventHapticsEnabled={onChangeEventHapticsEnabled}
+        onChangeVuMeterMode={onChangeVuMeterMode}
         onOpenColorSettings={() => {
           setIsMenuOpen(false);
           onOpenColorSettings();

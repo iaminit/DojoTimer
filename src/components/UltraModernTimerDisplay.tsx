@@ -1,4 +1,5 @@
 import type { TimerEngineState } from '../engine/timerMachine';
+import { resolveDigitScaleFactors } from '../services/storage';
 import { getClockDisplay } from '../utils/formatTime';
 import {
   computeSecondsNegativeBarPct,
@@ -8,10 +9,16 @@ import {
 interface UltraModernTimerDisplayProps {
   state: TimerEngineState;
   palette: ProTimerPalette;
+  digitScale?: number;
 }
 
-export function UltraModernTimerDisplay({ state, palette }: UltraModernTimerDisplayProps) {
+export function UltraModernTimerDisplay({
+  state,
+  palette,
+  digitScale = 100,
+}: UltraModernTimerDisplayProps) {
   const clock = getClockDisplay(state.remainingMs);
+  const { portraitFactor, landscapeFactor } = resolveDigitScaleFactors(digitScale);
   const secElapsedPct = computeSecondsNegativeBarPct(clock.totalDisplaySeconds, state.phase);
   const ariaLabel = `Tempo del round: ${Number(clock.minutes)} minuti e ${Number(clock.seconds)} secondi`;
   const secondsGlow = palette.isUrgent
@@ -42,8 +49,8 @@ export function UltraModernTimerDisplay({ state, palette }: UltraModernTimerDisp
               style={{
                 fontSize:
                   clock.minutes.length >= 3
-                    ? 'clamp(2.4rem, min(32cqi, 19dvh), 11rem)'
-                    : 'clamp(3.2rem, min(46cqi, 24dvh), 14rem)',
+                    ? `calc(clamp(2.4rem, min(32cqi, 19dvh), 11rem) * ${portraitFactor.toFixed(2)})`
+                    : `calc(clamp(3.2rem, min(46cqi, 24dvh), 14rem) * ${portraitFactor.toFixed(2)})`,
               }}
             >
               {clock.minutes}
@@ -77,7 +84,7 @@ export function UltraModernTimerDisplay({ state, palette }: UltraModernTimerDisp
             <div
               className="font-timer-pro tabular-digits timer-pro-seconds-contrast mr-[-0.015em] justify-self-center whitespace-nowrap font-bold leading-[0.82] tracking-[0.015em] transition-colors duration-200"
               style={{
-                fontSize: 'clamp(3.6rem, min(54cqi, 28dvh), 16.5rem)',
+                fontSize: `calc(clamp(3.6rem, min(54cqi, 28dvh), 16.5rem) * ${portraitFactor.toFixed(2)})`,
                 color: palette.secondsColor,
                 ['--pro-seconds-glow' as string]: secondsGlow,
               }}
@@ -114,8 +121,8 @@ export function UltraModernTimerDisplay({ state, palette }: UltraModernTimerDisp
                 style={{
                   fontSize:
                     clock.minutes.length >= 3
-                      ? 'clamp(2.6rem, min(17.5cqi, 40dvh), 15rem)'
-                      : 'clamp(3.2rem, min(22cqi, 46dvh), 18rem)',
+                      ? `calc(clamp(2.6rem, min(17.5cqi, 40dvh), 15rem) * ${landscapeFactor.toFixed(2)})`
+                      : `calc(clamp(3.2rem, min(22cqi, 46dvh), 18rem) * ${landscapeFactor.toFixed(2)})`,
                 }}
               >
                 {clock.minutes}
@@ -132,7 +139,7 @@ export function UltraModernTimerDisplay({ state, palette }: UltraModernTimerDisp
               <div
                 className="font-timer-pro tabular-digits timer-pro-seconds-contrast mr-[-0.015em] whitespace-nowrap font-bold leading-[0.82] tracking-[0.015em] transition-colors duration-200"
                 style={{
-                  fontSize: 'clamp(3.4rem, min(24cqi, 50dvh), 19rem)',
+                  fontSize: `calc(clamp(3.4rem, min(24cqi, 50dvh), 19rem) * ${landscapeFactor.toFixed(2)})`,
                   color: palette.secondsColor,
                   ['--pro-seconds-glow' as string]: secondsGlow,
                 }}

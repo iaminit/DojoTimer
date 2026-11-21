@@ -1,5 +1,12 @@
 import type { AudioMode, VoiceProfile } from '../types/timer';
+import { localMusicPlayer } from './musicPlayer';
+import { requestNativeAudioDucking } from './nativeAndroid';
 import { FINAL_FIVE_SCALE_HZ, renderBoxingBell, renderCountdownPulse, renderGong } from './soundDesign';
+
+function triggerMusicDucking(durationMs: number): void {
+  requestNativeAudioDucking(durationMs);
+  localMusicPlayer.duck(durationMs);
+}
 export { FINAL_FIVE_SCALE_HZ } from './soundDesign';
 
 type VoiceClipKey =
@@ -69,6 +76,11 @@ export const HAJIME_GONG_DELAY_SEC = 0.5;
 
 export type SoundImpactEvent = 'START_GONG' | 'WARNING_BELL' | 'END_BELL';
 
+export interface GongVisualCueEvent {
+  msUntilGong: number;
+  roundKey?: string;
+}
+
 
 export function getFinalFiveScaleFreqHz(secondsRemaining: number): number | null {
   const whole = Math.trunc(secondsRemaining);
@@ -124,6 +136,8 @@ class SoundEngine {
   private activeSources = new Set<AudioBufferSourceNode>();
   private pendingGongNodes = new Set<AudioScheduledSourceNode>();
   private soundImpactListeners = new Set<(event: SoundImpactEvent) => void>();
+  private gongVisualCueListeners = new Set<(event: GongVisualCueEvent) => void>();
+  private gongVisualCancelListeners = new Set<() => void>();
   private soundCancelListeners = new Set<() => void>();
   private soundImpactTimeoutIds = new Set<number>();
   private preloadStarted = false;
@@ -165,6 +179,45 @@ class SoundEngine {
         listener();
       }
     });
+  }
+
+  /**
+   * Notifica i subscriber con l'esatto tempo residuo (`msUntilGong`) prima dell'impatto di `gong.mp3`,
+   * permettendo all'animazione video di caricare il colpo e colpire il gong in sincrono al millisecondo.
+   */
+  public subscribeGongVisualCue(listener: (event: GongVisualCueEvent) => void): () => void {
+    this.gongVisualCueListeners.add(listener);
+    return () => {
+      this.gongVisualCueListeners.delete(listener);
+    };
+  }
+
+  public subscribeGongVisualCancel(listener: () => void): () => void {
+    this.gongVisualCancelListeners.add(listener);
+    return () => {
+      this.gongVisualCancelListeners.delete(listener);
+    };
+  }
+
+  public cancelGongVisual(): void {
+    for (const listener of this.gongVisualCancelListeners) {
+      try {
+        listener();
+      } catch {
+        // Isolate UI errors
+      }
+    }
+  }
+
+  public emitGongVisualCue(msUntilGong: number, roundKey?: string): void {
+    const safeMs = Math.max(0, Math.round(msUntilGong));
+    for (const listener of this.gongVisualCueListeners) {
+      try {
+        listener({ msUntilGong: safeMs, roundKey });
+      } catch {
+        // Isolate subscriber UI errors from audio playback
+      }
+    }
   }
 
   private emitSoundImpact(event: SoundImpactEvent): void {
@@ -608,6 +661,7 @@ class SoundEngine {
    * Anteprima immediata della voce selezionata nelle Opzioni (riproduce "Hajime").
    */
   public playVoicePreview(): void {
+    triggerMusicDucking(1800);
     const ctx = this.ensureContext();
     if (!ctx || !this.compressor) {
       return;
@@ -712,6 +766,7 @@ class SoundEngine {
   public playPrepCountdownSecond(sec: number): void {
     if (!Number.isInteger(sec) || sec < 1 || sec > 10) return;
     if (this.mode === 'VOICE_GONG') {
+      triggerMusicDucking(1100);
       this.playVoiceClip(`count-${sec}` as VoiceClipKey, JA_COUNTDOWN_WORDS[sec], 0, 1);
     }
   }
@@ -775,11 +830,15 @@ class SoundEngine {
   }
 
   private playStartGong(delaySec = 0): void {
+    const delayMs = Math.max(0, Math.round(delaySec * 1000));
+    triggerMusicDucking(delayMs + 2400);
+    this.emitGongVisualCue(delayMs);
     this.scheduleSoundImpact('START_GONG', delaySec);
     this.playSharedClip('gong', delaySec, 1.45, (rate) => renderGong(rate, 2.2));
   }
 
   private playEndBell(): void {
+    triggerMusicDucking(2000);
     this.scheduleSoundImpact('END_BELL', 0);
     this.playSharedClip('campanella-fine', 0, 1, (rate) => renderBoxingBell(rate, 3));
   }
@@ -795,6 +854,7 @@ class SoundEngine {
       return;
     }
 
+    triggerMusicDucking(2900);
     this.cancelPendingGong();
     const seq = this.hajimePlaySeq;
 
@@ -830,6 +890,7 @@ class SoundEngine {
 
   /** Un rintocco singolo più acuto al preavviso configurato. */
   public playWarningBell(): void {
+    triggerMusicDucking(2300);
     this.scheduleSoundImpact('WARNING_BELL', 0);
     this.playSharedClip('campanella-preavviso', 0, 1, (rate) => renderBoxingBell(rate, 1));
   }
@@ -843,6 +904,7 @@ class SoundEngine {
   /** Tre rintocchi a fine round, seguiti da Mate in modalità vocale. */
   public playMate(): void {
     this.stopAllVoice();
+    triggerMusicDucking(2600);
     this.playEndBell();
     this.playVoiceClip('matte', 'まて', 0.82, 1.35);
   }
@@ -850,6 +912,7 @@ class SoundEngine {
   /** Tre rintocchi a fine sessione, seguiti da Soremade in modalità vocale. */
   public playSoremade(): void {
     this.stopAllVoice();
+    triggerMusicDucking(2600);
     this.playEndBell();
     this.playVoiceClip('soremade', 'それまで', 0.82, 1.35);
   }
