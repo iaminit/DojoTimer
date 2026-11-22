@@ -657,7 +657,7 @@ export function MinimalTimerScreen({
       className={
         isProLayout
           ? 'font-timer-pro relative flex h-[100dvh] w-screen flex-col items-center justify-between overflow-hidden bg-black text-white'
-          : 'relative flex h-[100dvh] w-screen flex-col items-center justify-between overflow-hidden bg-black pl-[max(0.75rem,env(safe-area-inset-left,0px))] pr-[max(0.75rem,env(safe-area-inset-right,0px))] landscape:pl-[max(1.25rem,env(safe-area-inset-left,0px))] landscape:pr-[max(1.25rem,env(safe-area-inset-right,0px))] pt-[calc(env(safe-area-inset-top,0px)+1rem+2dvh)] pb-[calc(env(safe-area-inset-bottom,0px)+1rem+1dvh)] text-white sm:pt-[calc(1.5rem+2dvh)] sm:pb-[calc(1.5rem+1dvh)] [@media(orientation:landscape)_and_(max-height:520px)]:pt-[calc(env(safe-area-inset-top,0px)+0.5rem)] [@media(orientation:landscape)_and_(max-height:520px)]:pb-[calc(env(safe-area-inset-bottom,0px)+0.5rem)]'
+          : 'relative flex h-[100dvh] w-screen flex-col items-center justify-between overflow-hidden bg-black pl-[max(0.75rem,env(safe-area-inset-left,0px))] pr-[max(0.75rem,env(safe-area-inset-right,0px))] landscape:pl-[max(1.25rem,env(safe-area-inset-left,0px))] landscape:pr-[max(1.25rem,env(safe-area-inset-right,0px))] pt-[max(0.375rem,calc(env(safe-area-inset-top,0px)+0.25rem))] pb-[calc(env(safe-area-inset-bottom,0px)+1rem+1dvh)] text-white sm:pt-[max(0.625rem,calc(env(safe-area-inset-top,0px)+0.375rem))] sm:pb-[calc(1.5rem+1dvh)] [@media(orientation:landscape)_and_(max-height:520px)]:pt-[max(0.25rem,calc(env(safe-area-inset-top,0px)+0.25rem))] [@media(orientation:landscape)_and_(max-height:520px)]:pb-[calc(env(safe-area-inset-bottom,0px)+0.5rem)]'
       }
     >
       {/* 1. Full-Screen Background Progress Bar / Altimeter with user backgroundOpacity (default 20%) */}
@@ -763,7 +763,7 @@ export function MinimalTimerScreen({
 
       {/* 2. Top Bar */}
       {isProLayout ? (
-        <header className="relative z-30 flex w-full shrink-0 flex-col pt-[calc(env(safe-area-inset-top,0px)+clamp(10px,2.5dvh,32px))] pl-[max(14px,env(safe-area-inset-left,0px))] pr-[max(14px,env(safe-area-inset-right,0px))] sm:pl-[max(20px,env(safe-area-inset-left,0px))] sm:pr-[max(20px,env(safe-area-inset-right,0px))] landscape:pt-[calc(env(safe-area-inset-top,0px)+0.5rem)]">
+        <header className="relative z-30 flex w-full shrink-0 flex-col pt-[max(0.375rem,calc(env(safe-area-inset-top,0px)+0.25rem))] pl-[max(14px,env(safe-area-inset-left,0px))] pr-[max(14px,env(safe-area-inset-right,0px))] sm:pt-[max(0.625rem,calc(env(safe-area-inset-top,0px)+0.375rem))] sm:pl-[max(20px,env(safe-area-inset-left,0px))] sm:pr-[max(20px,env(safe-area-inset-right,0px))] landscape:pt-[max(0.375rem,calc(env(safe-area-inset-top,0px)+0.25rem))]">
           <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-1.5 sm:gap-2">
             <div className="justify-self-start">
               <button
