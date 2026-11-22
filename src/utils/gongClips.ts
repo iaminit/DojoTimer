@@ -13,7 +13,7 @@ export interface GongVideoClip {
 
 /**
  * Catalogo completo delle 3 animazioni gong in rotazione casuale:
- * Karateka (pugno), Judoka (colpo a palmo aperto), Sumotori (mazzuolo).
+ * Karateka (calcio frontale mae-geri), Judoka (colpo a palmo aperto), Sumotori (mazzuolo).
  */
 export const ACTIVE_GONG_CLIPS: readonly GongVideoClip[] = [
   {
@@ -21,7 +21,7 @@ export const ACTIVE_GONG_CLIPS: readonly GongVideoClip[] = [
     label: 'Karateka',
     assetPath: 'video/gong-karateka.mp4',
     durationMs: 3000,
-    impactMs: 1240,
+    impactMs: 1340,
   },
   {
     id: 'judoka',

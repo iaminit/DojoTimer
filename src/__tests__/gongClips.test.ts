@@ -33,13 +33,13 @@ describe('Gong cinematic video clips random rotation & millisecond audio sync', 
   });
 
   it('aligns pre-cue delay and start offset to land clip impact exactly on gong.mp3', () => {
-    const karateka = ACTIVE_GONG_CLIPS[0]; // impactMs: 1240, durationMs: 3000
+    const karateka = ACTIVE_GONG_CLIPS[0]; // impactMs: 1340, durationMs: 3000
     const judoka = ACTIVE_GONG_CLIPS[1]; // impactMs: 1240, durationMs: 3000
     const sumotori = ACTIVE_GONG_CLIPS[2]; // impactMs: 1340, durationMs: 3000
 
-    // Pre-cued 1340ms before gong: karateka/judoka wait 100ms then play from 0s; sumotori plays immediately
+    // Pre-cued 1340ms before gong: judoka waits 100ms then plays from 0s; karateka & sumotori play immediately
     const kPre = computeGongClipSyncPlan(karateka, 1340);
-    expect(kPre.delayBeforeStartMs).toBe(100);
+    expect(kPre.delayBeforeStartMs).toBe(0);
     expect(kPre.startOffsetSec).toBe(0);
     expect(kPre.playDurationMs).toBe(3000);
 
@@ -52,11 +52,11 @@ describe('Gong cinematic video clips random rotation & millisecond audio sync', 
     expect(sPre.startOffsetSec).toBe(0);
     expect(sPre.playDurationMs).toBe(3000);
 
-    // Direct VOICE_GONG start with prep=0 (500ms Hajime delay): jumps straight to wind-up so punch lands at +500ms
+    // Direct VOICE_GONG start with prep=0 (500ms Hajime delay): jumps straight to wind-up so kick lands at +500ms
     const kHajime = computeGongClipSyncPlan(karateka, 500);
     expect(kHajime.delayBeforeStartMs).toBe(0);
-    expect(kHajime.startOffsetSec).toBeCloseTo(0.74, 3);
-    expect(kHajime.playDurationMs).toBe(2260);
+    expect(kHajime.startOffsetSec).toBeCloseTo(0.84, 3);
+    expect(kHajime.playDurationMs).toBe(2160);
 
     // Direct GONG_ONLY start with prep=0 (0ms delay): starts 80ms before contact for instant impact
     const sInstant = computeGongClipSyncPlan(sumotori, 0);
