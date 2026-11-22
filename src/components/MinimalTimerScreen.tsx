@@ -1002,91 +1002,102 @@ export function MinimalTimerScreen({
       {/* 5b. Finished Session Completion Summary Overlay (SOREMADE / FINE SESSIONE) */}
       {isFinished && !isExitModalOpen && (
         <div
-          className="absolute inset-0 z-30 flex items-center justify-center bg-black/62 px-5 py-4 backdrop-blur-[2px]"
+          className="fixed inset-0 z-40 flex h-[100dvh] w-screen flex-col overflow-hidden bg-black/72 pt-[max(0.75rem,calc(env(safe-area-inset-top,0px)+0.5rem))] pb-[max(0.75rem,calc(env(safe-area-inset-bottom,0px)+0.5rem))] pl-[max(1.25rem,env(safe-area-inset-left,0px))] pr-[max(1.25rem,env(safe-area-inset-right,0px))] backdrop-blur-[2px] sm:px-8 sm:py-6 [@media(orientation:landscape)_and_(max-height:520px)]:pt-[max(0.375rem,calc(env(safe-area-inset-top,0px)+0.25rem))] [@media(orientation:landscape)_and_(max-height:520px)]:pb-[max(0.375rem,calc(env(safe-area-inset-bottom,0px)+0.25rem))]"
           data-testid="session-finished-summary"
         >
+          {/* Optical centering counterweight matching bottom footer height */}
           <div
-            className="flex w-full max-w-sm flex-col items-center gap-4 rounded-3xl border-2 bg-neutral-950/95 p-6 text-center text-white shadow-2xl sm:p-7"
-            style={{
-              borderColor: `rgba(${isProLayout ? proPalette.rgb : theme.rgb}, 0.65)`,
-              boxShadow: `0 0 42px rgba(${isProLayout ? proPalette.rgb : theme.rgb}, 0.25), 0 18px 40px rgba(0, 0, 0, 0.9)`,
-            }}
-          >
-            <div className="flex flex-col items-center gap-1.5">
-              <CheckCircle2
-                className="h-10 w-10"
-                style={{ color: isProLayout ? proPalette.hex : theme.hex }}
-              />
-              <h2
-                className="text-2xl font-extrabold tracking-[0.14em] uppercase sm:text-3xl"
-                style={{ color: isProLayout ? proPalette.hex : theme.hex }}
-              >
-                {phaseBannerLabel}
-              </h2>
-              <p className="max-w-full truncate text-xs font-bold tracking-[0.1em] text-slate-300 uppercase sm:text-sm">
-                {state.program.name}
-              </p>
-            </div>
+            className="h-[56px] shrink-0 [@media(orientation:landscape)_and_(max-height:520px)]:hidden"
+            aria-hidden="true"
+          />
 
-            <div className="grid w-full grid-cols-2 gap-2.5">
-              <div className="flex flex-col items-center rounded-2xl border border-white/12 bg-black/80 px-3 py-2.5">
-                <span className="text-[10px] font-bold tracking-[0.12em] text-slate-400 uppercase">
-                  ROUND COMPLETATI
-                </span>
-                <span className="tabular-digits mt-0.5 text-lg font-extrabold text-white sm:text-xl">
-                  {sessionSummary.rounds}
-                </span>
-              </div>
-              <div className="flex flex-col items-center rounded-2xl border border-white/12 bg-black/80 px-3 py-2.5">
-                <span className="text-[10px] font-bold tracking-[0.12em] text-slate-400 uppercase">
-                  TEMPO TOTALE
-                </span>
-                <span className="tabular-digits mt-0.5 text-lg font-extrabold text-white sm:text-xl">
-                  {formatDurationHuman(sessionSummary.totalSessionSeconds)}
-                </span>
-              </div>
-            </div>
-
-            <div className="mt-1 flex w-full flex-col gap-2.5">
-              <button
-                type="button"
-                onClick={() => onRestartSession(true)}
-                className="flex min-h-[52px] w-full items-center justify-center gap-2 rounded-full text-sm font-extrabold tracking-[0.14em] text-black uppercase transition-transform hover:brightness-110 active:scale-[0.98] cursor-pointer"
-                style={{ backgroundColor: isProLayout ? proPalette.hex : theme.hex }}
-              >
-                <RefreshCw className="h-4 w-4 stroke-[2.6]" />
-                <span>RIPARTI</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={onConfirmExit}
-                className="flex min-h-[50px] w-full items-center justify-center gap-2 rounded-full border-2 border-white/25 bg-black px-4 text-sm font-extrabold tracking-[0.12em] text-white uppercase transition-colors hover:border-white/55 hover:bg-white/5 active:scale-[0.98] cursor-pointer"
-              >
-                <SlidersHorizontal className="h-4 w-4 shrink-0" />
-                <span>TORNA ALLE IMPOSTAZIONI</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={handleCloseApp}
-                className="flex min-h-[46px] w-full items-center justify-center gap-2 rounded-full border border-red-400/35 bg-red-500/8 px-4 text-xs font-extrabold tracking-[0.14em] text-red-200 uppercase transition-colors hover:border-red-400/65 hover:bg-red-500/15 active:scale-[0.98] cursor-pointer"
-              >
-                <Power className="h-3.5 w-3.5 shrink-0 text-red-400" />
-                <span>CHIUDI APP</span>
-              </button>
-
-              {browserCloseHint && (
-                <span
-                  role="status"
-                  aria-live="polite"
-                  className="text-[11px] font-semibold text-slate-400"
+          <div className="dojo-scroll flex min-h-0 flex-1 overflow-y-auto py-2">
+            <div
+              className="my-auto mx-auto flex w-full max-w-sm flex-col items-center gap-4 rounded-3xl border-2 bg-neutral-950/95 p-6 text-center text-white shadow-2xl sm:p-7 [@media(orientation:landscape)_and_(max-height:520px)]:gap-3 [@media(orientation:landscape)_and_(max-height:520px)]:p-4"
+              style={{
+                borderColor: `rgba(${isProLayout ? proPalette.rgb : theme.rgb}, 0.65)`,
+                boxShadow: `0 0 42px rgba(${isProLayout ? proPalette.rgb : theme.rgb}, 0.25), 0 18px 40px rgba(0, 0, 0, 0.9)`,
+              }}
+            >
+              <div className="flex flex-col items-center gap-1.5">
+                <CheckCircle2
+                  className="h-10 w-10 [@media(orientation:landscape)_and_(max-height:520px)]:h-8 [@media(orientation:landscape)_and_(max-height:520px)]:w-8"
+                  style={{ color: isProLayout ? proPalette.hex : theme.hex }}
+                />
+                <h2
+                  className="text-2xl font-extrabold tracking-[0.14em] uppercase sm:text-3xl [@media(orientation:landscape)_and_(max-height:520px)]:text-xl"
+                  style={{ color: isProLayout ? proPalette.hex : theme.hex }}
                 >
-                  Nel browser chiudi la scheda per uscire
-                </span>
-              )}
+                  {phaseBannerLabel}
+                </h2>
+                <p className="max-w-full truncate text-xs font-bold tracking-[0.1em] text-slate-300 uppercase sm:text-sm">
+                  {state.program.name}
+                </p>
+              </div>
+
+              <div className="grid w-full grid-cols-2 gap-2.5">
+                <div className="flex flex-col items-center rounded-2xl border border-white/12 bg-black/80 px-3 py-2.5">
+                  <span className="text-[10px] font-bold tracking-[0.12em] text-slate-400 uppercase">
+                    ROUND COMPLETATI
+                  </span>
+                  <span className="tabular-digits mt-0.5 text-lg font-extrabold text-white sm:text-xl">
+                    {sessionSummary.rounds}
+                  </span>
+                </div>
+                <div className="flex flex-col items-center rounded-2xl border border-white/12 bg-black/80 px-3 py-2.5">
+                  <span className="text-[10px] font-bold tracking-[0.12em] text-slate-400 uppercase">
+                    TEMPO TOTALE
+                  </span>
+                  <span className="tabular-digits mt-0.5 text-lg font-extrabold text-white sm:text-xl">
+                    {formatDurationHuman(sessionSummary.totalSessionSeconds)}
+                  </span>
+                </div>
+              </div>
+
+              <div className="mt-1 flex w-full flex-col gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => onRestartSession(true)}
+                  className="flex min-h-[52px] w-full items-center justify-center gap-2 rounded-full text-sm font-extrabold tracking-[0.14em] text-black uppercase transition-transform hover:brightness-110 active:scale-[0.98] cursor-pointer"
+                  style={{ backgroundColor: isProLayout ? proPalette.hex : theme.hex }}
+                >
+                  <RefreshCw className="h-4 w-4 stroke-[2.6]" />
+                  <span>RIPARTI</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={onConfirmExit}
+                  className="flex min-h-[50px] w-full items-center justify-center gap-2 rounded-full border-2 border-white/25 bg-black px-4 text-xs font-extrabold tracking-[0.12em] text-white uppercase transition-colors hover:border-white/55 hover:bg-white/5 active:scale-[0.98] sm:text-sm cursor-pointer"
+                >
+                  <SlidersHorizontal className="h-4 w-4 shrink-0" />
+                  <span>TORNA ALLE IMPOSTAZIONI</span>
+                </button>
+              </div>
             </div>
           </div>
+
+          {/* Bottom Secondary Utility Footer: Same compact pill as Home page */}
+          <footer className="relative z-10 flex shrink-0 flex-col items-center justify-center gap-1.5 pt-3 sm:pt-4 [@media(orientation:landscape)_and_(max-height:520px)]:pt-1.5">
+            <button
+              type="button"
+              onClick={handleCloseApp}
+              aria-label="Chiudi ed esci dall'applicazione"
+              className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-full border border-white/15 bg-neutral-950/90 px-6 text-xs font-extrabold tracking-[0.14em] text-slate-300 uppercase transition-colors hover:border-red-400/50 hover:bg-red-500/10 hover:text-red-200 active:scale-95 [@media(orientation:landscape)_and_(max-height:520px)]:min-h-[36px] [@media(orientation:landscape)_and_(max-height:520px)]:px-5 [@media(orientation:landscape)_and_(max-height:520px)]:text-[11px] cursor-pointer"
+            >
+              <Power className="h-3.5 w-3.5 shrink-0 text-red-400/90" />
+              <span>ESCI DALL&apos;APP</span>
+            </button>
+            {browserCloseHint && (
+              <span
+                role="status"
+                aria-live="polite"
+                className="text-[11px] font-semibold text-slate-400"
+              >
+                Nel browser chiudi la scheda per uscire
+              </span>
+            )}
+          </footer>
         </div>
       )}
 
@@ -1281,64 +1292,83 @@ export function MinimalTimerScreen({
       {isExitModalOpen && (
         <div
           ref={exitDialogRef}
-          className="dojo-scroll fixed inset-0 z-50 flex overflow-y-auto bg-black/80 px-5 py-4 backdrop-blur-xs"
+          className="fixed inset-0 z-50 flex h-[100dvh] w-screen flex-col overflow-hidden bg-black/80 pt-[max(0.75rem,calc(env(safe-area-inset-top,0px)+0.5rem))] pb-[max(0.75rem,calc(env(safe-area-inset-bottom,0px)+0.5rem))] pl-[max(1.25rem,env(safe-area-inset-left,0px))] pr-[max(1.25rem,env(safe-area-inset-right,0px))] backdrop-blur-xs sm:px-8 sm:py-6 [@media(orientation:landscape)_and_(max-height:520px)]:pt-[max(0.375rem,calc(env(safe-area-inset-top,0px)+0.25rem))] [@media(orientation:landscape)_and_(max-height:520px)]:pb-[max(0.375rem,calc(env(safe-area-inset-bottom,0px)+0.25rem))]"
           role="dialog"
           aria-modal="true"
           aria-labelledby="exit-modal-title"
         >
-          <div className="my-auto mx-auto w-full max-w-sm rounded-3xl border border-white/20 bg-neutral-950 p-6 text-white shadow-2xl sm:p-7 [@media(orientation:landscape)_and_(max-height:520px)]:p-5">
-            <h2
-              id="exit-modal-title"
-              className="whitespace-nowrap text-center text-lg font-extrabold tracking-wide text-white sm:text-xl"
-            >
-              Uscire dalla sessione?
-            </h2>
+          {/* Optical centering counterweight matching bottom footer height */}
+          <div
+            className="h-[56px] shrink-0 [@media(orientation:landscape)_and_(max-height:520px)]:hidden"
+            aria-hidden="true"
+          />
 
-            <div className="mt-5 flex flex-col gap-2.5">
-              <button
-                ref={confirmYesBtnRef}
-                type="button"
-                onClick={handleConfirmExit}
-                className="flex min-h-[52px] w-full items-center justify-center gap-2 whitespace-nowrap rounded-full border-2 bg-black px-4 text-xs font-extrabold tracking-[0.12em] uppercase transition-all hover:bg-white/5 active:scale-[0.98] sm:text-sm cursor-pointer"
-                style={{
-                  borderColor: theme.hex,
-                  color: theme.hex,
-                  boxShadow: `0 0 18px rgba(${theme.rgb}, 0.2)`,
-                }}
+          <div className="dojo-scroll flex min-h-0 flex-1 overflow-y-auto py-2">
+            <div className="my-auto mx-auto w-full max-w-sm rounded-3xl border border-white/20 bg-neutral-950 p-6 text-white shadow-2xl sm:p-7 [@media(orientation:landscape)_and_(max-height:520px)]:p-5">
+              <h2
+                id="exit-modal-title"
+                className="whitespace-nowrap text-center text-lg font-extrabold tracking-wide text-white sm:text-xl"
               >
-                <SlidersHorizontal className="h-4 w-4 shrink-0" />
-                <span>TORNA ALLE IMPOSTAZIONI</span>
-              </button>
+                Uscire dalla sessione?
+              </h2>
 
-              <button
-                type="button"
-                onClick={handleCloseApp}
-                className="flex min-h-[50px] w-full items-center justify-center gap-2 whitespace-nowrap rounded-full border border-red-400/40 bg-red-500/8 px-4 text-xs font-extrabold tracking-[0.14em] text-red-200 uppercase transition-colors hover:border-red-400/70 hover:bg-red-500/15 active:scale-[0.98] sm:text-sm cursor-pointer"
-              >
-                <Power className="h-4 w-4 shrink-0 text-red-400" />
-                <span>CHIUDI APP</span>
-              </button>
-
-              <button
-                ref={cancelNoBtnRef}
-                type="button"
-                onClick={handleCancelExit}
-                className="mt-1 min-h-[48px] w-full whitespace-nowrap rounded-full border border-white/25 bg-black px-4 text-xs font-extrabold tracking-[0.16em] text-white uppercase transition-colors hover:border-white/55 hover:bg-white/5 active:scale-[0.98] sm:text-sm cursor-pointer"
-              >
-                CONTINUA
-              </button>
-
-              {browserCloseHint && (
-                <span
-                  role="status"
-                  aria-live="polite"
-                  className="text-center text-[11px] font-semibold text-slate-400"
+              <div className="mt-5 flex flex-col gap-3">
+                <button
+                  ref={confirmYesBtnRef}
+                  type="button"
+                  onClick={handleConfirmExit}
+                  aria-label="Torna alle impostazioni e ferma il timer"
+                  className="flex min-h-[60px] w-full items-center justify-center gap-2.5 rounded-full border-2 bg-black px-4 py-2 text-center uppercase transition-all hover:bg-white/5 active:scale-[0.98] cursor-pointer"
+                  style={{
+                    borderColor: theme.hex,
+                    color: theme.hex,
+                    boxShadow: `0 0 18px rgba(${theme.rgb}, 0.2)`,
+                  }}
                 >
-                  Nel browser chiudi la scheda per uscire
-                </span>
-              )}
+                  <SlidersHorizontal className="h-4 w-4 shrink-0" />
+                  <span className="flex flex-col items-center leading-tight">
+                    <span className="whitespace-nowrap text-xs font-extrabold tracking-[0.1em] sm:text-sm">
+                      TORNA ALLE IMPOSTAZIONI
+                    </span>
+                    <span className="mt-0.5 whitespace-nowrap text-[10px] font-bold tracking-[0.14em] opacity-80">
+                      FERMA IL TIMER
+                    </span>
+                  </span>
+                </button>
+
+                <button
+                  ref={cancelNoBtnRef}
+                  type="button"
+                  onClick={handleCancelExit}
+                  className="min-h-[50px] w-full whitespace-nowrap rounded-full border border-white/25 bg-black px-4 text-xs font-extrabold tracking-[0.16em] text-white uppercase transition-colors hover:border-white/55 hover:bg-white/5 active:scale-[0.98] sm:text-sm cursor-pointer"
+                >
+                  CONTINUA
+                </button>
+              </div>
             </div>
           </div>
+
+          {/* Bottom Secondary Utility Footer: Exact same size & styling as Home page */}
+          <footer className="relative z-10 flex shrink-0 flex-col items-center justify-center gap-1.5 pt-3 sm:pt-4 [@media(orientation:landscape)_and_(max-height:520px)]:pt-1.5">
+            <button
+              type="button"
+              onClick={handleCloseApp}
+              aria-label="Chiudi ed esci dall'applicazione"
+              className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-full border border-white/15 bg-neutral-950/90 px-6 text-xs font-extrabold tracking-[0.14em] text-slate-300 uppercase transition-colors hover:border-red-400/50 hover:bg-red-500/10 hover:text-red-200 active:scale-95 [@media(orientation:landscape)_and_(max-height:520px)]:min-h-[36px] [@media(orientation:landscape)_and_(max-height:520px)]:px-5 [@media(orientation:landscape)_and_(max-height:520px)]:text-[11px] cursor-pointer"
+            >
+              <Power className="h-3.5 w-3.5 shrink-0 text-red-400/90" />
+              <span>ESCI DALL&apos;APP</span>
+            </button>
+            {browserCloseHint && (
+              <span
+                role="status"
+                aria-live="polite"
+                className="text-[11px] font-semibold text-slate-400"
+              >
+                Nel browser chiudi la scheda per uscire
+              </span>
+            )}
+          </footer>
         </div>
       )}
     </main>
