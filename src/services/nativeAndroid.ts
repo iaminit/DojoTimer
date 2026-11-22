@@ -37,6 +37,7 @@ interface DojoNativeInterface {
     currentVersion: string,
   ) => void;
   openOfficialApkDownload?: (url: string) => void;
+  exitApp?: () => void;
 }
 
 type DojoWindow = Window & {
@@ -433,6 +434,22 @@ export function openNativeApkDownload(url: string): boolean {
   }
   try {
     bridge.openOfficialApkDownload(url);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Chiude in modo pulito l'app Android (ferma servizi, audio e rimuove il task dai Recenti).
+ */
+export function exitNativeApp(): boolean {
+  const bridge = getDojoWindow()?.DojoNative;
+  if (!bridge || typeof bridge.exitApp !== 'function') {
+    return false;
+  }
+  try {
+    bridge.exitApp();
     return true;
   } catch {
     return false;

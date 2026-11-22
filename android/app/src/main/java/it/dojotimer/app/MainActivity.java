@@ -1008,6 +1008,27 @@ public class MainActivity extends BridgeActivity {
             }
           });
     }
+
+    @JavascriptInterface
+    public void exitApp() {
+      runOnUiThread(
+          () -> {
+            if (isFinishing() || isDestroyed() || getTrustedWebView() == null) {
+              return;
+            }
+            timerActive = false;
+            timerRunning = false;
+            timerPaused = false;
+            mainHandler.removeCallbacks(abandonDuckFocusRunnable);
+            abandonAudioDuckFocus();
+            if (digitalSpectrumEngine != null) {
+              digitalSpectrumEngine.stop();
+            }
+            stopPlaybackCaptureService();
+            stopTrayServiceAndNotification();
+            finishAndRemoveTask();
+          });
+    }
   }
 
   private static String fetchOfficialManifestJson(int currentBuild, String currentVersion) {

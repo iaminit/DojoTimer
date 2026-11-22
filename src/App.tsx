@@ -15,6 +15,7 @@ import {
 } from './services/haptics';
 import { localMusicPlayer } from './services/musicPlayer';
 import {
+  exitNativeApp,
   registerNativeTogglePauseHandler,
   setNativeVuMeterMode,
   syncNativeTimerState,
@@ -669,6 +670,14 @@ export function App() {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [screen, start, state.phase, toggleStartPause]);
 
+  const handleExitApp = useCallback((): boolean => {
+    soundEngine.stopAllVoice();
+    soundEngine.cancelGongVisual();
+    localMusicPlayer.pause();
+    clearPersistedSession();
+    return exitNativeApp();
+  }, []);
+
   if (screen === 'LANDING') {
     return (
       <DisciplineLandingScreen
@@ -677,6 +686,7 @@ export function App() {
         onSelectDiscipline={handleSelectDiscipline}
         onStartProgram={handleStartProgram}
         onEditProgram={handleEditLandingProgram}
+        onExitApp={handleExitApp}
       />
     );
   }

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  exitNativeApp,
   getNativeMediaVolumePercent,
   isNativeMusicActive,
   isNativePlaybackCaptureActive,
@@ -21,6 +22,7 @@ describe('nativeAndroid PiP, tray notification, audio ducking & volume bridge', 
   let duckMock: ReturnType<typeof vi.fn>;
   let volumeMock: ReturnType<typeof vi.fn>;
   let openApkMock: ReturnType<typeof vi.fn>;
+  let exitAppMock: ReturnType<typeof vi.fn>;
   let setVuModeMock: ReturnType<typeof vi.fn>;
   let reqCaptureMock: ReturnType<typeof vi.fn>;
   let stopCaptureMock: ReturnType<typeof vi.fn>;
@@ -34,6 +36,7 @@ describe('nativeAndroid PiP, tray notification, audio ducking & volume bridge', 
     duckMock = vi.fn();
     volumeMock = vi.fn(() => 65);
     openApkMock = vi.fn();
+    exitAppMock = vi.fn();
     setVuModeMock = vi.fn();
     reqCaptureMock = vi.fn();
     stopCaptureMock = vi.fn();
@@ -46,6 +49,7 @@ describe('nativeAndroid PiP, tray notification, audio ducking & volume bridge', 
         requestAudioDucking: duckMock,
         getMediaVolumePercent: volumeMock,
         openOfficialApkDownload: openApkMock,
+        exitApp: exitAppMock,
         setVuMeterMode: setVuModeMock,
         requestPlaybackCapture: reqCaptureMock,
         stopPlaybackCapture: stopCaptureMock,
@@ -191,5 +195,8 @@ describe('nativeAndroid PiP, tray notification, audio ducking & volume bridge', 
 
     expect(stopNativePlaybackCapture()).toBe(true);
     expect(stopCaptureMock).toHaveBeenCalledTimes(1);
+
+    expect(exitNativeApp()).toBe(true);
+    expect(exitAppMock).toHaveBeenCalledTimes(1);
   });
 });

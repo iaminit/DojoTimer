@@ -1,4 +1,5 @@
-import { ChevronRight, Pencil, Play } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { ChevronRight, Pencil, Play, Power } from 'lucide-react';
 import { DISCIPLINES } from '../config/disciplines';
 import type { DisciplineMode, WorkoutProgram } from '../types/timer';
 import { calculateTotalDurationSeconds, formatMMSS } from '../utils/formatTime';
@@ -9,6 +10,7 @@ interface DisciplineLandingScreenProps {
   onSelectDiscipline: (mode: DisciplineMode) => void;
   onStartProgram: (program: WorkoutProgram) => void;
   onEditProgram: (program: WorkoutProgram) => void;
+  onExitApp?: () => boolean;
 }
 
 const ORDERED_DISCIPLINES: readonly DisciplineMode[] = ['JUDO', 'BJJ'];
@@ -19,14 +21,48 @@ export function DisciplineLandingScreen({
   onSelectDiscipline,
   onStartProgram,
   onEditProgram,
+  onExitApp,
 }: DisciplineLandingScreenProps) {
+  const [browserCloseHint, setBrowserCloseHint] = useState(false);
+  const hintTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (hintTimerRef.current !== null) {
+        window.clearTimeout(hintTimerRef.current);
+      }
+    };
+  }, []);
+
+  const handleExitClick = () => {
+    const closedNatively = onExitApp ? onExitApp() : false;
+    if (closedNatively) {
+      return;
+    }
+    try {
+      window.close();
+    } catch {
+      // Ignore blocked window.close() in browser tabs
+    }
+    if (typeof window !== 'undefined' && !window.closed) {
+      setBrowserCloseHint(true);
+      if (hintTimerRef.current !== null) {
+        window.clearTimeout(hintTimerRef.current);
+      }
+      hintTimerRef.current = window.setTimeout(() => {
+        hintTimerRef.current = null;
+        setBrowserCloseHint(false);
+      }, 3200);
+    }
+  };
+
   const programByDiscipline: Record<DisciplineMode, WorkoutProgram> = {
     JUDO: judoProgram,
     BJJ: bjjProgram,
   };
 
   return (
-    <main className="relative flex h-[100dvh] w-screen flex-col overflow-hidden bg-black pt-[calc(env(safe-area-inset-top,0px)+1rem)] pb-[calc(env(safe-area-inset-bottom,0px)+1rem)] pl-[max(1rem,env(safe-area-inset-left,0px))] pr-[max(1rem,env(safe-area-inset-right,0px))] text-white sm:px-8 sm:py-8 [@media(orientation:landscape)_and_(max-height:520px)]:pt-[calc(env(safe-area-inset-top,0px)+0.5rem)] [@media(orientation:landscape)_and_(max-height:520px)]:pb-[calc(env(safe-area-inset-bottom,0px)+0.5rem)]">
+    <main className="relative flex h-[100dvh] w-screen flex-col overflow-hidden bg-black pt-[max(0.75rem,calc(env(safe-area-inset-top,0px)+0.5rem))] pb-[max(0.75rem,calc(env(safe-area-inset-bottom,0px)+0.5rem))] pl-[max(1rem,env(safe-area-inset-left,0px))] pr-[max(1rem,env(safe-area-inset-right,0px))] text-white sm:px-8 sm:py-6 [@media(orientation:landscape)_and_(max-height:520px)]:pt-[max(0.375rem,calc(env(safe-area-inset-top,0px)+0.25rem))] [@media(orientation:landscape)_and_(max-height:520px)]:pb-[max(0.375rem,calc(env(safe-area-inset-bottom,0px)+0.25rem))]">
       {/* Subtle tactical grid background */}
       <div
         className="tactical-grid pointer-events-none fixed inset-x-0 bottom-0 z-0 h-[48dvh]"
@@ -162,6 +198,28 @@ export function DisciplineLandingScreen({
           })}
         </section>
       </div>
+
+      {/* Bottom Secondary Utility Footer: Clean Exit App Action */}
+      <footer className="relative z-10 flex shrink-0 flex-col items-center justify-center gap-1.5 pt-3 sm:pt-4 [@media(orientation:landscape)_and_(max-height:520px)]:pt-1.5">
+        <button
+          type="button"
+          onClick={handleExitClick}
+          aria-label="Chiudi ed esci dall'applicazione"
+          className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-full border border-white/15 bg-neutral-950/90 px-6 text-xs font-extrabold tracking-[0.14em] text-slate-300 uppercase transition-colors hover:border-red-400/50 hover:bg-red-500/10 hover:text-red-200 active:scale-95 [@media(orientation:landscape)_and_(max-height:520px)]:min-h-[36px] [@media(orientation:landscape)_and_(max-height:520px)]:px-5 [@media(orientation:landscape)_and_(max-height:520px)]:text-[11px] cursor-pointer"
+        >
+          <Power className="h-3.5 w-3.5 shrink-0 text-red-400/90" />
+          <span>ESCI DALL&apos;APP</span>
+        </button>
+        {browserCloseHint && (
+          <span
+            role="status"
+            aria-live="polite"
+            className="text-[11px] font-semibold text-slate-400"
+          >
+            Nel browser chiudi la scheda per uscire
+          </span>
+        )}
+      </footer>
     </main>
   );
 }
