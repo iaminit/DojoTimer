@@ -40,6 +40,21 @@ describe('APK update checker & security validation', () => {
     expect(resolveTrustedApkUrl('https://1ms.it/timer/../evil.apk')).toBe(
       OFFICIAL_APK_DOWNLOAD_URL,
     );
+    expect(resolveTrustedApkUrl('https://1ms.it/timer/?redirect=https://evil.example/a.apk')).toBe(
+      OFFICIAL_APK_DOWNLOAD_URL,
+    );
+    expect(resolveTrustedApkUrl('https://1ms.it/timer/#evil.apk')).toBe(
+      OFFICIAL_APK_DOWNLOAD_URL,
+    );
+    expect(resolveTrustedApkUrl('https://1ms.it/timer/%2e%2e/other.apk')).toBe(
+      OFFICIAL_APK_DOWNLOAD_URL,
+    );
+    expect(resolveTrustedApkUrl('https://1ms.it:8443/timer/DojoTimer.apk')).toBe(
+      OFFICIAL_APK_DOWNLOAD_URL,
+    );
+    expect(resolveTrustedApkUrl('https://user@1ms.it/timer/DojoTimer.apk')).toBe(
+      OFFICIAL_APK_DOWNLOAD_URL,
+    );
 
     const parsed = parseRemoteVersionManifest({
       version: '1.0.14',

@@ -18,6 +18,7 @@ import {
   exportProgramsJson,
   generateUuid,
   MAX_IMPORT_JSON_BYTES,
+  MAX_STORED_PROGRAMS,
   parseImportProgramsJson,
   sanitizeTextInput,
 } from '../../services/storage';
@@ -129,6 +130,13 @@ export function SavedProgramsView({
       setSelectedTab(built.discipline);
       setStatusMessage({ type: 'ok', text: `Programma "${built.name}" aggiornato.` });
     } else {
+      if (programs.length >= MAX_STORED_PROGRAMS) {
+        setStatusMessage({
+          type: 'error',
+          text: `Limite massimo raggiunto (${MAX_STORED_PROGRAMS} programmi). Elimina un programma prima di crearne uno nuovo.`,
+        });
+        return;
+      }
       onSavePrograms([built, ...programs]);
       setSelectedTab(built.discipline);
       setStatusMessage({ type: 'ok', text: `Programma "${built.name}" creato.` });
@@ -153,6 +161,13 @@ export function SavedProgramsView({
   };
 
   const handleDuplicate = (program: WorkoutProgram) => {
+    if (programs.length >= MAX_STORED_PROGRAMS) {
+      setStatusMessage({
+        type: 'error',
+        text: `Limite massimo raggiunto (${MAX_STORED_PROGRAMS} programmi). Elimina un programma prima di duplicarne uno.`,
+      });
+      return;
+    }
     const now = Date.now();
     const copy: WorkoutProgram = {
       ...program,
@@ -185,7 +200,8 @@ export function SavedProgramsView({
     document.body.appendChild(anchor);
     anchor.click();
     anchor.remove();
-    URL.revokeObjectURL(url);
+    // Defer revokeObjectURL so Safari / mobile WebView finish starting the async download
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
     setStatusMessage({ type: 'ok', text: `Esportati ${programs.length} programmi in JSON.` });
   };
 

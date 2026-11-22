@@ -81,6 +81,7 @@ const PRODUCTION_CSP = [
   "media-src 'self' blob:",
   "connect-src 'self' https://1ms.it",
   "worker-src 'self'",
+  "frame-src 'none'",
   "object-src 'none'",
   "base-uri 'self'",
   "form-action 'none'",

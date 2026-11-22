@@ -82,6 +82,7 @@ public class MainActivity extends BridgeActivity {
   private boolean pendingPlaybackCaptureAfterPerm = false;
   private boolean pendingSessionPermAfterNotif = false;
   private boolean receiverRegistered = false;
+  private boolean captureStateReceiverRegistered = false;
   private boolean audioSessionReceiverRegistered = false;
   private boolean foregroundServiceRunning = false;
 
@@ -110,6 +111,22 @@ public class MainActivity extends BridgeActivity {
                       null);
                 }
               });
+        }
+      };
+
+  private final BroadcastReceiver captureStateReceiver =
+      new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+          if (intent == null
+              || !DojoAudioCaptureService.ACTION_CAPTURE_STATE_CHANGED.equals(intent.getAction())) {
+            return;
+          }
+          boolean active =
+              intent.getBooleanExtra(
+                  DojoAudioCaptureService.EXTRA_CAPTURE_ACTIVE,
+                  DojoAudioCaptureService.isCaptureActive());
+          runOnUiThread(() -> notifyWebCaptureState(active));
         }
       };
 
@@ -150,7 +167,6 @@ public class MainActivity extends BridgeActivity {
             result -> {
               if (result.getResultCode() == Activity.RESULT_OK && result.getData() != null) {
                 startPlaybackCaptureService(result.getResultCode(), result.getData());
-                notifyWebCaptureState(true);
               } else {
                 notifyWebCaptureState(DojoAudioCaptureService.isCaptureActive());
               }
@@ -180,6 +196,14 @@ public class MainActivity extends BridgeActivity {
       ContextCompat.registerReceiver(
           this, togglePauseReceiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED);
       receiverRegistered = true;
+    }
+
+    if (!captureStateReceiverRegistered) {
+      IntentFilter captureFilter =
+          new IntentFilter(DojoAudioCaptureService.ACTION_CAPTURE_STATE_CHANGED);
+      ContextCompat.registerReceiver(
+          this, captureStateReceiver, captureFilter, ContextCompat.RECEIVER_NOT_EXPORTED);
+      captureStateReceiverRegistered = true;
     }
 
     if (!audioSessionReceiverRegistered) {
@@ -330,6 +354,7 @@ public class MainActivity extends BridgeActivity {
     } else if (requestCode == REQ_RECORD_AUDIO) {
       if (grantResults.length == 0) {
         sessionPermissionRequested = false;
+        pendingPlaybackCaptureAfterPerm = false;
         return;
       }
       boolean granted = grantResults[0] == PackageManager.PERMISSION_GRANTED;
@@ -360,6 +385,14 @@ public class MainActivity extends BridgeActivity {
         // Already unregistered
       }
       receiverRegistered = false;
+    }
+    if (captureStateReceiverRegistered) {
+      try {
+        unregisterReceiver(captureStateReceiver);
+      } catch (IllegalArgumentException ignored) {
+        // Already unregistered
+      }
+      captureStateReceiverRegistered = false;
     }
     if (audioSessionReceiverRegistered) {
       try {
@@ -556,7 +589,7 @@ public class MainActivity extends BridgeActivity {
     try {
       ContextCompat.startForegroundService(this, svc);
     } catch (RuntimeException ignored) {
-      // Ignore if FGS start fails
+      notifyWebCaptureState(false);
     }
   }
 
@@ -906,6 +939,17 @@ public class MainActivity extends BridgeActivity {
     @JavascriptInterface
     public void fetchVersionManifestAsync(int reqId, int currentBuild, String currentVersion) {
       if (!updateCheckInFlight.compareAndSet(false, true)) {
+        runOnUiThread(
+            () -> {
+              WebView webView = getTrustedWebView();
+              if (webView != null && !isFinishing() && !isDestroyed()) {
+                webView.evaluateJavascript(
+                    "(function(){ if (typeof window.__dojoOnUpdateManifest === 'function') { window.__dojoOnUpdateManifest("
+                        + reqId
+                        + ", null); } })()",
+                    null);
+              }
+            });
         return;
       }
       final int safeBuild = Math.max(0, currentBuild);

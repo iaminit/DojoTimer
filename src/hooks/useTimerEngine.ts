@@ -58,10 +58,10 @@ export interface UseTimerEngineResult {
   resume: () => void;
   toggleStartPause: () => void;
   reset: () => void;
-  skipForward: () => void;
-  skipBackward: () => void;
-  restartCurrentRound: () => void;
-  restartSession: () => void;
+  skipForward: (resumeAfter?: boolean) => void;
+  skipBackward: (resumeAfter?: boolean) => void;
+  restartCurrentRound: (resumeAfter?: boolean) => void;
+  restartSession: (resumeAfter?: boolean) => void;
   beginRestScrub: () => void;
   scrubRestProgress: (progress: number) => void;
   endRestScrub: () => void;
@@ -379,128 +379,162 @@ export function useTimerEngine(
     commitState(idle, true);
   }, [commitState, resetEdgeDetectors]);
 
-  const restartCurrentRound = useCallback(() => {
-    isScrubbingRestRef.current = false;
-    soundEngine.unlock();
-    soundEngine.stopAllVoice();
-    soundEngine.cancelGongVisual();
-    lastGongPreCueKeyRef.current = '';
-    resetEdgeDetectors();
-    const current = liveStateRef.current;
-    const restarted = restartCurrentPhaseState(current);
-    const shouldStayPaused =
-      current.isPaused && restarted.phase !== 'IDLE' && restarted.phase !== 'FINISHED';
-    const nextState: TimerEngineState = {
-      ...restarted,
-      isPaused: shouldStayPaused,
-    };
-    if (!shouldStayPaused && nextState.phase !== 'IDLE' && nextState.phase !== 'FINISHED') {
-      phaseEndPerfRef.current = performance.now() + nextState.remainingMs;
-    } else {
-      phaseEndPerfRef.current = 0;
-    }
-    commitState(nextState, true);
-    if (!shouldStayPaused) {
-      checkEdgeAudio(nextState);
-    }
-  }, [checkEdgeAudio, commitState, resetEdgeDetectors]);
-
-  const restartSession = useCallback(() => {
-    isScrubbingRestRef.current = false;
-    soundEngine.unlock();
-    soundEngine.stopAllVoice();
-    soundEngine.cancelGongVisual();
-    lastGongPreCueKeyRef.current = '';
-    resetEdgeDetectors();
-    const current = liveStateRef.current;
-    const idle = createIdleState(current.program, current.activeQuickPresetMinutes);
-    const { nextState, audioEvent } = getNextPhaseState(idle);
-
-    if (current.isPaused) {
-      phaseEndPerfRef.current = 0;
-      const pausedStart: TimerEngineState = {
-        ...nextState,
-        isPaused: true,
+  const restartCurrentRound = useCallback(
+    (resumeAfter?: boolean) => {
+      isScrubbingRestRef.current = false;
+      soundEngine.unlock();
+      soundEngine.stopAllVoice();
+      soundEngine.cancelGongVisual();
+      lastGongPreCueKeyRef.current = '';
+      resetEdgeDetectors();
+      const current = liveStateRef.current;
+      const restarted = restartCurrentPhaseState(current);
+      const wantPaused = resumeAfter === undefined ? current.isPaused : !resumeAfter;
+      const shouldStayPaused =
+        wantPaused && restarted.phase !== 'IDLE' && restarted.phase !== 'FINISHED';
+      const nextState: TimerEngineState = {
+        ...restarted,
+        isPaused: shouldStayPaused,
       };
-      commitState(pausedStart, true);
-      return;
-    }
-
-    phaseEndPerfRef.current = performance.now() + nextState.remainingMs;
-    commitState(nextState, true);
-    emitAudioCue(audioEvent);
-    checkEdgeAudio(nextState);
-  }, [checkEdgeAudio, commitState, resetEdgeDetectors]);
-
-  const skipForward = useCallback(() => {
-    isScrubbingRestRef.current = false;
-    soundEngine.unlock();
-    soundEngine.stopAllVoice();
-    soundEngine.cancelGongVisual();
-    lastGongPreCueKeyRef.current = '';
-    const current = liveStateRef.current;
-    if (current.phase === 'FINISHED') {
-      return;
-    }
-    resetEdgeDetectors();
-    const { nextState, audioEvent } = getNextPhaseState(current);
-    const preservedPause =
-      current.isPaused && nextState.phase !== 'FINISHED' && nextState.phase !== 'IDLE';
-    const finalState: TimerEngineState = {
-      ...nextState,
-      isPaused: preservedPause,
-    };
-    if (!preservedPause && finalState.phase !== 'FINISHED' && finalState.phase !== 'IDLE') {
-      phaseEndPerfRef.current = performance.now() + finalState.remainingMs;
-    } else {
-      phaseEndPerfRef.current = 0;
-    }
-    commitState(finalState, true);
-    if (!preservedPause || finalState.phase === 'FINISHED') {
-      emitAudioCue(audioEvent);
-    }
-  }, [commitState, resetEdgeDetectors]);
-
-  const skipBackward = useCallback(() => {
-    isScrubbingRestRef.current = false;
-    soundEngine.unlock();
-    soundEngine.stopAllVoice();
-    soundEngine.cancelGongVisual();
-    lastGongPreCueKeyRef.current = '';
-    const current = liveStateRef.current;
-    if (current.phase === 'IDLE') {
-      return;
-    }
-    resetEdgeDetectors();
-
-    const elapsedInPhaseMs = current.phaseDurationMs - current.remainingMs;
-    // If more than 3 seconds elapsed in active phase, rewind current phase start
-    if (current.phase !== 'FINISHED' && elapsedInPhaseMs > 3000) {
-      const restarted: TimerEngineState = {
-        ...current,
-        remainingMs: current.phaseDurationMs,
-      };
-      if (!restarted.isPaused) {
-        phaseEndPerfRef.current = performance.now() + restarted.remainingMs;
+      if (!shouldStayPaused && nextState.phase !== 'IDLE' && nextState.phase !== 'FINISHED') {
+        phaseEndPerfRef.current = performance.now() + nextState.remainingMs;
+      } else {
+        phaseEndPerfRef.current = 0;
       }
-      commitState(restarted, true);
-      return;
-    }
+      commitState(nextState, true);
+      if (!shouldStayPaused) {
+        checkEdgeAudio(nextState);
+      }
+    },
+    [checkEdgeAudio, commitState, resetEdgeDetectors],
+  );
 
-    const prevState = getPrevPhaseState(current);
-    const preservedPause =
-      current.isPaused && prevState.phase !== 'IDLE' && prevState.phase !== 'FINISHED';
-    const finalState: TimerEngineState = {
-      ...prevState,
-      isPaused: preservedPause,
-    };
-    if (!preservedPause && finalState.phase !== 'IDLE' && finalState.phase !== 'FINISHED') {
-      phaseEndPerfRef.current = performance.now() + finalState.remainingMs;
-    } else {
-      phaseEndPerfRef.current = 0;
-    }
-    commitState(finalState, true);
-  }, [commitState, resetEdgeDetectors]);
+  const restartSession = useCallback(
+    (resumeAfter?: boolean) => {
+      isScrubbingRestRef.current = false;
+      soundEngine.unlock();
+      soundEngine.stopAllVoice();
+      soundEngine.cancelGongVisual();
+      lastGongPreCueKeyRef.current = '';
+      resetEdgeDetectors();
+      const current = liveStateRef.current;
+      const idle = createIdleState(current.program, current.activeQuickPresetMinutes);
+      const { nextState, audioEvent } = getNextPhaseState(idle);
+      const shouldStayPaused = resumeAfter === undefined ? current.isPaused : !resumeAfter;
+
+      if (shouldStayPaused) {
+        phaseEndPerfRef.current = 0;
+        const pausedStart: TimerEngineState = {
+          ...nextState,
+          isPaused: true,
+        };
+        commitState(pausedStart, true);
+        return;
+      }
+
+      phaseEndPerfRef.current = performance.now() + nextState.remainingMs;
+      commitState(nextState, true);
+      emitAudioCue(audioEvent);
+      checkEdgeAudio(nextState);
+    },
+    [checkEdgeAudio, commitState, resetEdgeDetectors],
+  );
+
+  const skipForward = useCallback(
+    (resumeAfter?: boolean) => {
+      isScrubbingRestRef.current = false;
+      soundEngine.unlock();
+      soundEngine.stopAllVoice();
+      soundEngine.cancelGongVisual();
+      lastGongPreCueKeyRef.current = '';
+      const current = liveStateRef.current;
+      if (current.phase === 'FINISHED') {
+        return;
+      }
+      resetEdgeDetectors();
+      const { nextState, audioEvent } = getNextPhaseState(current);
+      const wantPaused = resumeAfter === undefined ? current.isPaused : !resumeAfter;
+      const preservedPause =
+        wantPaused && nextState.phase !== 'FINISHED' && nextState.phase !== 'IDLE';
+      const finalState: TimerEngineState = {
+        ...nextState,
+        isPaused: preservedPause,
+      };
+      if (!preservedPause && finalState.phase !== 'FINISHED' && finalState.phase !== 'IDLE') {
+        phaseEndPerfRef.current = performance.now() + finalState.remainingMs;
+      } else {
+        phaseEndPerfRef.current = 0;
+      }
+      commitState(finalState, true);
+      if (!preservedPause || finalState.phase === 'FINISHED') {
+        emitAudioCue(audioEvent);
+      }
+      if (!preservedPause) {
+        checkEdgeAudio(finalState);
+      }
+    },
+    [checkEdgeAudio, commitState, resetEdgeDetectors],
+  );
+
+  const skipBackward = useCallback(
+    (resumeAfter?: boolean) => {
+      isScrubbingRestRef.current = false;
+      soundEngine.unlock();
+      soundEngine.stopAllVoice();
+      soundEngine.cancelGongVisual();
+      lastGongPreCueKeyRef.current = '';
+      const current = liveStateRef.current;
+      if (current.phase === 'IDLE') {
+        return;
+      }
+      resetEdgeDetectors();
+
+      const wantPaused = resumeAfter === undefined ? current.isPaused : !resumeAfter;
+      const elapsedInPhaseMs = current.phaseDurationMs - current.remainingMs;
+      // If more than 3 seconds elapsed in active phase, rewind current phase start
+      if (current.phase !== 'FINISHED' && elapsedInPhaseMs > 3000) {
+        const restarted: TimerEngineState = {
+          ...current,
+          remainingMs: current.phaseDurationMs,
+          isPaused: wantPaused,
+        };
+        if (!restarted.isPaused) {
+          phaseEndPerfRef.current = performance.now() + restarted.remainingMs;
+        } else {
+          phaseEndPerfRef.current = 0;
+        }
+        commitState(restarted, true);
+        if (!restarted.isPaused) {
+          checkEdgeAudio(restarted);
+        }
+        return;
+      }
+
+      const rawPrev = getPrevPhaseState(current);
+      // Never strand the active Timer screen in IDLE when stepping backward from Round 1 / Prep:
+      // rewind cleanly to the start of the first active phase instead.
+      const prevTransition =
+        rawPrev.phase === 'IDLE' ? getNextPhaseState(rawPrev) : { nextState: rawPrev, audioEvent: null };
+      const prevState = prevTransition.nextState;
+      const preservedPause =
+        wantPaused && prevState.phase !== 'IDLE' && prevState.phase !== 'FINISHED';
+      const finalState: TimerEngineState = {
+        ...prevState,
+        isPaused: preservedPause,
+      };
+      if (!preservedPause && finalState.phase !== 'IDLE' && finalState.phase !== 'FINISHED') {
+        phaseEndPerfRef.current = performance.now() + finalState.remainingMs;
+      } else {
+        phaseEndPerfRef.current = 0;
+      }
+      commitState(finalState, true);
+      if (!preservedPause) {
+        emitAudioCue(prevTransition.audioEvent);
+        checkEdgeAudio(finalState);
+      }
+    },
+    [checkEdgeAudio, commitState, resetEdgeDetectors],
+  );
 
   const selectProgram = useCallback(
     (program: WorkoutProgram, autoStart = false) => {
@@ -549,6 +583,9 @@ export function useTimerEngine(
       return;
     }
     isScrubbingRestRef.current = true;
+    // Annulla subito eventuale animazione gong pre-caricata se l'utente afferra lo slider negli ultimi 1.3s
+    lastGongPreCueKeyRef.current = '';
+    soundEngine.cancelGongVisual();
     if (!current.isPaused) {
       const frozenMs = Math.min(
         current.phaseDurationMs,
@@ -594,7 +631,10 @@ export function useTimerEngine(
       phaseEndPerfRef.current = performance.now() + current.remainingMs;
     }
     commitState(current, true);
-  }, [commitState]);
+    if (!current.isPaused) {
+      checkEdgeAudio(current);
+    }
+  }, [checkEdgeAudio, commitState]);
 
   const subscribeFillProgress = useCallback<FillProgressSubscriber>((listener) => {
     progressListenersRef.current.add(listener);

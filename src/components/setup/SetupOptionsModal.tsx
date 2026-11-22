@@ -64,7 +64,7 @@ interface SetupOptionsModalProps {
   onChangeEventHapticsEnabled: (enabled: boolean) => void;
   onChangeVuMeterMode: (mode: VuMeterMode) => void;
   onOpenColorSettings: () => void;
-  onSaveCurrentAsProgram: (customName: string) => string;
+  onSaveCurrentAsProgram: (customName: string) => string | null;
   onOpenSavedPrograms: () => void;
   onStartQuickPreset: (minutes: number) => void;
 }
@@ -187,6 +187,10 @@ export function SetupOptionsModal({
 
   const handleSave = () => {
     const savedDisplayName = onSaveCurrentAsProgram(saveName);
+    if (!savedDisplayName) {
+      setMenuSavedFeedback('Limite massimo raggiunto (200 programmi). Elimina un programma prima di salvarne uno nuovo.');
+      return;
+    }
     setSaveName('');
     setMenuSavedFeedback(`Salvato "${savedDisplayName}" in ${discipline}`);
   };

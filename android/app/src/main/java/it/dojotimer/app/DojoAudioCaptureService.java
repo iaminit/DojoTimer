@@ -34,6 +34,9 @@ import androidx.core.app.ServiceCompat;
 public final class DojoAudioCaptureService extends Service {
   public static final String ACTION_START_CAPTURE = "it.dojotimer.app.ACTION_AUDIO_CAPTURE_START";
   public static final String ACTION_STOP_CAPTURE = "it.dojotimer.app.ACTION_AUDIO_CAPTURE_STOP";
+  public static final String ACTION_CAPTURE_STATE_CHANGED =
+      "it.dojotimer.app.ACTION_AUDIO_CAPTURE_STATE_CHANGED";
+  public static final String EXTRA_CAPTURE_ACTIVE = "extra_capture_active";
   public static final String EXTRA_RESULT_CODE = "extra_result_code";
   public static final String EXTRA_RESULT_DATA = "extra_result_data";
 
@@ -159,6 +162,7 @@ public final class DojoAudioCaptureService extends Service {
       running = true;
       captureActive = true;
       latestPacket = EMPTY_P_PACKET;
+      broadcastCaptureState(true);
 
       Thread worker =
           new Thread(
@@ -289,6 +293,20 @@ public final class DojoAudioCaptureService extends Service {
           // Ignore
         }
       }
+      if (running) {
+        new Handler(Looper.getMainLooper()).post(this::teardownAndStop);
+      }
+    }
+  }
+
+  private void broadcastCaptureState(boolean active) {
+    try {
+      Intent stateIntent = new Intent(ACTION_CAPTURE_STATE_CHANGED);
+      stateIntent.setPackage(getPackageName());
+      stateIntent.putExtra(EXTRA_CAPTURE_ACTIVE, active);
+      sendBroadcast(stateIntent);
+    } catch (RuntimeException ignored) {
+      // Ignore broadcast errors during teardown
     }
   }
 
@@ -323,6 +341,7 @@ public final class DojoAudioCaptureService extends Service {
 
   private void teardownAndStop() {
     stopCaptureResourcesOnly();
+    broadcastCaptureState(false);
     try {
       ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE);
     } catch (RuntimeException ignored) {
@@ -334,6 +353,7 @@ public final class DojoAudioCaptureService extends Service {
   @Override
   public void onDestroy() {
     stopCaptureResourcesOnly();
+    broadcastCaptureState(false);
     try {
       ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE);
     } catch (RuntimeException ignored) {

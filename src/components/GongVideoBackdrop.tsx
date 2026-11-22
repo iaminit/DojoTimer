@@ -40,7 +40,7 @@ export function GongVideoBackdrop({
   const videoRefs = useRef<Partial<Record<GongClipId, HTMLVideoElement | null>>>({});
   const lastClipIdRef = useRef<GongClipId | null>(null);
   const activeClipIdRef = useRef<GongClipId | null>(null);
-  const activeGongTargetPerfRef = useRef<number>(0);
+  const pendingSeekCleanupRef = useRef<(() => void) | null>(null);
   const startTimerRef = useRef<number | null>(null);
   const fadeTimerRef = useRef<number | null>(null);
   const hideTimerRef = useRef<number | null>(null);
@@ -72,10 +72,17 @@ export function GongVideoBackdrop({
     }
   }, []);
 
+  const clearPendingSeekListener = useCallback(() => {
+    if (pendingSeekCleanupRef.current) {
+      pendingSeekCleanupRef.current();
+      pendingSeekCleanupRef.current = null;
+    }
+  }, []);
+
   const stopAllPlayback = useCallback(() => {
     clearTimers();
+    clearPendingSeekListener();
     activeClipIdRef.current = null;
-    activeGongTargetPerfRef.current = 0;
     setActivePlayback(null);
     for (const clip of ACTIVE_GONG_CLIPS) {
       const el = videoRefs.current[clip.id];
@@ -88,7 +95,7 @@ export function GongVideoBackdrop({
         }
       }
     }
-  }, [clearTimers]);
+  }, [clearPendingSeekListener, clearTimers]);
 
   useEffect(() => {
     if (isPaused || isFinished) {
@@ -98,9 +105,6 @@ export function GongVideoBackdrop({
 
   useEffect(() => {
     const handleCue = (cue: GongVisualCueEvent) => {
-      const now = performance.now();
-      const targetGongPerf = now + Math.max(0, cue.msUntilGong);
-
       // Blocco rigoroso 1 animazione alla volta: se un'animazione è già prenotata o in corso
       // per questo gong (es. pre-cue già partito prima di playHajime/playStartGong), NON cambiare
       // mai personaggio — lascia finire quella singola clip, regolando dolcemente solo la velocità
@@ -131,9 +135,9 @@ export function GongVideoBackdrop({
       }
 
       clearTimers();
+      clearPendingSeekListener();
       lastClipIdRef.current = clip.id;
       activeClipIdRef.current = clip.id;
-      activeGongTargetPerfRef.current = targetGongPerf;
 
       const plan = computeGongClipSyncPlan(clip, cue.msUntilGong);
 
@@ -144,12 +148,36 @@ export function GongVideoBackdrop({
           stopAllPlayback();
           return;
         }
-        try {
-          videoEl.playbackRate = 1;
-          videoEl.currentTime = plan.startOffsetSec;
-        } catch {
-          // Ignore seek errors before metadata is loaded
+
+        const applyInitialSeek = () => {
+          try {
+            videoEl.playbackRate = 1;
+            videoEl.currentTime = plan.startOffsetSec;
+          } catch {
+            // Ignore seek errors before metadata is loaded
+          }
+        };
+
+        if (plan.startOffsetSec > 0 && videoEl.readyState < 1) {
+          const onLoadedMetadata = () => {
+            clearPendingSeekListener();
+            if (activeClipIdRef.current === clip.id) {
+              applyInitialSeek();
+            }
+          };
+          videoEl.addEventListener('loadedmetadata', onLoadedMetadata, { once: true });
+          pendingSeekCleanupRef.current = () => {
+            videoEl.removeEventListener('loadedmetadata', onLoadedMetadata);
+          };
+          try {
+            videoEl.load();
+          } catch {
+            // Ignore load errors
+          }
+        } else {
+          applyInitialSeek();
         }
+
         setActivePlayback({ clipId: clip.id, fadingOut: false });
         const playPromise = videoEl.play();
         if (playPromise && typeof playPromise.catch === 'function') {
@@ -185,7 +213,7 @@ export function GongVideoBackdrop({
       unsubCancel();
       stopAllPlayback();
     };
-  }, [clearTimers, stopAllPlayback]);
+  }, [clearPendingSeekListener, clearTimers, stopAllPlayback]);
 
   return (
     <div

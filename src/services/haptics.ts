@@ -1,4 +1,5 @@
 import { Haptics, ImpactStyle, NotificationType } from '@capacitor/haptics';
+import { isNativeAndroidRuntime } from './nativeAndroid';
 import { soundEngine, type SoundImpactEvent } from './soundEngine';
 
 let lastButtonFeedbackAt = 0;
@@ -7,13 +8,7 @@ let soundEventHapticsEnabled = true;
 let activeSoundHapticTimers: number[] = [];
 
 function isNativeCapacitor(): boolean {
-  return (
-    typeof window !== 'undefined' &&
-    Boolean(
-      (window as unknown as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor
-        ?.isNativePlatform?.(),
-    )
-  );
+  return isNativeAndroidRuntime();
 }
 
 function triggerWebVibration(pattern: number | number[]): void {

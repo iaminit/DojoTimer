@@ -13,6 +13,7 @@ import {
   triggerButtonFeedback,
   triggerSoundEventHaptic,
 } from './services/haptics';
+import { localMusicPlayer } from './services/musicPlayer';
 import {
   registerNativeTogglePauseHandler,
   setNativeVuMeterMode,
@@ -561,6 +562,9 @@ export function App() {
   }, []);
 
   const handleChangeVuMeterMode = useCallback((mode: VuMeterMode) => {
+    if (mode !== 'LOCAL_PLAYER') {
+      localMusicPlayer.pause();
+    }
     setVuMeterMode(mode);
     saveVuMeterMode(mode);
     setNativeVuMeterMode(mode);
@@ -592,25 +596,25 @@ export function App() {
 
   const handleRestoreDefaults = useCallback(() => {
     const defaults = createDefaultPrograms();
-    setPrograms((prev) => {
-      const existingIds = new Set(prev.map((p) => p.id));
-      const existingNames = new Set(prev.map((p) => p.name.toLowerCase()));
-      const missingDefaults = defaults.filter(
-        (d) => !existingIds.has(d.id) && !existingNames.has(d.name.toLowerCase()),
-      );
-      const merged = missingDefaults.length > 0 ? [...prev, ...missingDefaults] : prev;
-      savePrograms(merged);
-      if (!merged.some((p) => p.id === activeProgramId)) {
-        const first = merged.find((p) => p.discipline === selectedDiscipline) ?? merged[0];
-        if (first) {
-          setActiveProgramId(first.id);
-          saveActiveProgramId(first.id);
-          saveActiveProgramIdForDiscipline(first.discipline, first.id);
-          selectProgram(first, false);
-        }
+    const prev = programsRef.current;
+    const existingIds = new Set(prev.map((p) => p.id));
+    const existingNames = new Set(prev.map((p) => p.name.toLowerCase()));
+    const missingDefaults = defaults.filter(
+      (d) => !existingIds.has(d.id) && !existingNames.has(d.name.toLowerCase()),
+    );
+    const merged = missingDefaults.length > 0 ? [...prev, ...missingDefaults] : prev;
+    programsRef.current = merged;
+    setPrograms(merged);
+    savePrograms(merged);
+    if (!merged.some((p) => p.id === activeProgramId)) {
+      const first = merged.find((p) => p.discipline === selectedDiscipline) ?? merged[0];
+      if (first) {
+        setActiveProgramId(first.id);
+        saveActiveProgramId(first.id);
+        saveActiveProgramIdForDiscipline(first.discipline, first.id);
+        selectProgram(first, false);
       }
-      return merged;
-    });
+    }
   }, [activeProgramId, selectProgram, selectedDiscipline]);
 
   // Keyboard shortcuts scoped to active page

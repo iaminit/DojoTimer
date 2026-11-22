@@ -2,7 +2,12 @@ import { useEffect, useState } from 'react';
 import { ArrowLeft, Menu } from 'lucide-react';
 import { DISCIPLINES } from '../config/disciplines';
 import { useCurrentClock } from '../hooks/useCurrentClock';
-import { generateUuid, PROGRAM_LIMITS } from '../services/storage';
+import {
+  generateUuid,
+  MAX_STORED_PROGRAMS,
+  PROGRAM_LIMITS,
+  sanitizeTextInput,
+} from '../services/storage';
 import { RoundDurationWheelModal } from './RoundDurationWheelModal';
 import { SavedProgramsView } from './setup/SavedProgramsView';
 import { SetupOptionsModal } from './setup/SetupOptionsModal';
@@ -114,9 +119,12 @@ export function SetupScreen({
     onStartProgram(adhocProgram);
   };
 
-  const handleSaveCurrentAsProgram = (customName: string): string => {
+  const handleSaveCurrentAsProgram = (customName: string): string | null => {
+    if (programs.length >= MAX_STORED_PROGRAMS) {
+      return null;
+    }
     const now = Date.now();
-    const name = (customName.trim() || defaultProgramName).slice(0, 80);
+    const name = sanitizeTextInput(customName, 80) || defaultProgramName;
     const created: WorkoutProgram = {
       id: generateUuid(),
       name,

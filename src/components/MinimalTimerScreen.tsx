@@ -72,10 +72,10 @@ interface MinimalTimerScreenProps {
   onPause: () => void;
   onResume: () => void;
   onTogglePause: () => void;
-  onRestartCurrentRound?: () => void;
-  onSkipForward?: () => void;
-  onSkipBackward?: () => void;
-  onRestartSession: () => void;
+  onRestartCurrentRound?: (resumeAfter?: boolean) => void;
+  onSkipForward?: (resumeAfter?: boolean) => void;
+  onSkipBackward?: (resumeAfter?: boolean) => void;
+  onRestartSession: (resumeAfter?: boolean) => void;
   onBeginRestScrub?: () => void;
   onScrubRestProgress?: (progress: number) => void;
   onEndRestScrub?: () => void;
@@ -195,7 +195,7 @@ export function MinimalTimerScreen({
 
   const handleOpenRoundMenu = useCallback(() => {
     if (isFinished) {
-      onRestartSession();
+      onRestartSession(true);
       return;
     }
     const wasRunning = !state.isPaused && state.phase !== 'IDLE' && state.phase !== 'FINISHED';
@@ -218,41 +218,29 @@ export function MinimalTimerScreen({
     const shouldResume = wasRunningBeforeRoundMenuRef.current;
     wasRunningBeforeRoundMenuRef.current = false;
     setIsRoundMenuOpen(false);
-    onRestartCurrentRound?.();
-    if (shouldResume) {
-      onResume();
-    }
-  }, [onRestartCurrentRound, onResume]);
+    onRestartCurrentRound?.(shouldResume);
+  }, [onRestartCurrentRound]);
 
   const handleSkipBackwardAction = useCallback(() => {
     const shouldResume = wasRunningBeforeRoundMenuRef.current;
     wasRunningBeforeRoundMenuRef.current = false;
     setIsRoundMenuOpen(false);
-    onSkipBackward?.();
-    if (shouldResume) {
-      onResume();
-    }
-  }, [onResume, onSkipBackward]);
+    onSkipBackward?.(shouldResume);
+  }, [onSkipBackward]);
 
   const handleSkipForwardAction = useCallback(() => {
     const shouldResume = wasRunningBeforeRoundMenuRef.current;
     wasRunningBeforeRoundMenuRef.current = false;
     setIsRoundMenuOpen(false);
-    onSkipForward?.();
-    if (shouldResume) {
-      onResume();
-    }
-  }, [onResume, onSkipForward]);
+    onSkipForward?.(shouldResume);
+  }, [onSkipForward]);
 
   const handleRestartSessionAction = useCallback(() => {
     const shouldResume = wasRunningBeforeRoundMenuRef.current;
     wasRunningBeforeRoundMenuRef.current = false;
     setIsRoundMenuOpen(false);
-    onRestartSession();
-    if (shouldResume) {
-      onResume();
-    }
-  }, [onRestartSession, onResume]);
+    onRestartSession(shouldResume);
+  }, [onRestartSession]);
 
   // Monitor native Android media volume so coaches get a subtle warning if volume is at 0%
   useEffect(() => {
@@ -1022,7 +1010,7 @@ export function MinimalTimerScreen({
             <div className="mt-1 flex w-full flex-col gap-2.5">
               <button
                 type="button"
-                onClick={onRestartSession}
+                onClick={() => onRestartSession(true)}
                 className="flex min-h-[52px] w-full items-center justify-center gap-2 rounded-full text-sm font-extrabold tracking-[0.14em] text-black uppercase transition-transform hover:brightness-110 active:scale-[0.98] cursor-pointer"
                 style={{ backgroundColor: isProLayout ? proPalette.hex : theme.hex }}
               >
@@ -1081,7 +1069,7 @@ export function MinimalTimerScreen({
 
           <button
             type="button"
-            onClick={isFinished ? onRestartSession : onTogglePause}
+            onClick={() => (isFinished ? onRestartSession(true) : onTogglePause())}
             aria-label={
               isFinished
                 ? 'Riavvia sessione'
@@ -1125,7 +1113,7 @@ export function MinimalTimerScreen({
 
           <button
             type="button"
-            onClick={isFinished ? onRestartSession : onTogglePause}
+            onClick={() => (isFinished ? onRestartSession(true) : onTogglePause())}
             aria-label={
               isFinished
                 ? 'Riavvia sessione'

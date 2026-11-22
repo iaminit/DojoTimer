@@ -150,7 +150,7 @@ public class DojoTimerForegroundService extends Service {
   public int onStartCommand(Intent intent, int flags, int startId) {
     if (intent == null || ACTION_STOP.equals(intent.getAction())) {
       releasePartialWakeLock();
-      ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE);
+      safeStopForeground();
       stopSelf();
       return START_NOT_STICKY;
     }
@@ -171,7 +171,14 @@ public class DojoTimerForegroundService extends Service {
         Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q
             ? ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
             : 0;
-    ServiceCompat.startForeground(this, LIVE_NOTIFICATION_ID, notification, fgsType);
+    try {
+      ServiceCompat.startForeground(this, LIVE_NOTIFICATION_ID, notification, fgsType);
+    } catch (RuntimeException ignored) {
+      // Android 12+ può lanciare ForegroundServiceStartNotAllowedException se l'app è già in background
+      releasePartialWakeLock();
+      stopSelf();
+      return START_NOT_STICKY;
+    }
 
     if (running && !paused) {
       acquirePartialWakeLock();
@@ -185,16 +192,24 @@ public class DojoTimerForegroundService extends Service {
   @Override
   public void onDestroy() {
     releasePartialWakeLock();
-    ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE);
+    safeStopForeground();
     super.onDestroy();
   }
 
   @Override
   public void onTaskRemoved(Intent rootIntent) {
     releasePartialWakeLock();
-    ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE);
+    safeStopForeground();
     stopSelf();
     super.onTaskRemoved(rootIntent);
+  }
+
+  private void safeStopForeground() {
+    try {
+      ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE);
+    } catch (RuntimeException ignored) {
+      // Ignore stopForeground teardown errors
+    }
   }
 
   @Nullable

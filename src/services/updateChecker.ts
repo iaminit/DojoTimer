@@ -56,16 +56,28 @@ export function buildVersionManifestQueryUrl(
   return `${OFFICIAL_VERSION_MANIFEST_URL}?v=${encodeURIComponent(safeVersion)}&build=${safeBuild}&t=${safeTs}`;
 }
 
+const SAFE_APK_PATH_RE = /^\/timer\/[A-Za-z0-9._-]+\.apk$/;
+
 export function resolveTrustedApkUrl(rawUrl: unknown): string {
   if (typeof rawUrl === 'string') {
     const trimmed = rawUrl.trim();
-    if (
-      trimmed.startsWith('https://1ms.it/timer/') &&
-      trimmed.endsWith('.apk') &&
-      !trimmed.includes('..') &&
-      !trimmed.includes('@')
-    ) {
-      return trimmed;
+    try {
+      const parsed = new URL(trimmed);
+      if (
+        parsed.protocol === 'https:' &&
+        parsed.hostname === '1ms.it' &&
+        parsed.port === '' &&
+        parsed.username === '' &&
+        parsed.password === '' &&
+        parsed.search === '' &&
+        parsed.hash === '' &&
+        SAFE_APK_PATH_RE.test(parsed.pathname) &&
+        !parsed.pathname.includes('..')
+      ) {
+        return `https://1ms.it${parsed.pathname}`;
+      }
+    } catch {
+      // Invalid URL -> fall back to canonical official APK URL
     }
   }
   return OFFICIAL_APK_DOWNLOAD_URL;
