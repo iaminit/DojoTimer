@@ -674,9 +674,13 @@ export function App() {
     soundEngine.stopAllVoice();
     soundEngine.cancelGongVisual();
     localMusicPlayer.pause();
-    clearPersistedSession();
-    return exitNativeApp();
-  }, []);
+    const closedNatively = exitNativeApp();
+    if (closedNatively) {
+      clearPersistedSession();
+      reset();
+    }
+    return closedNatively;
+  }, [reset]);
 
   if (screen === 'LANDING') {
     return (
@@ -716,6 +720,7 @@ export function App() {
         onEndRestScrub={endRestScrub}
         isPipMode={isPipMode}
         onConfirmExit={handleStopTimer}
+        onExitApp={handleExitApp}
       />
     );
   }

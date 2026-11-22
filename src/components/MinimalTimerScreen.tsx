@@ -5,10 +5,12 @@ import {
   ChevronLeft,
   Pause,
   Play,
+  Power,
   RefreshCw,
   RotateCcw,
   SkipBack,
   SkipForward,
+  SlidersHorizontal,
   VolumeX,
   X,
 } from 'lucide-react';
@@ -81,6 +83,7 @@ interface MinimalTimerScreenProps {
   onEndRestScrub?: () => void;
   isPipMode?: boolean;
   onConfirmExit: () => void;
+  onExitApp?: () => boolean;
 }
 
 const REST_SCRUB_DEADZONE_PX = 4;
@@ -120,6 +123,7 @@ export function MinimalTimerScreen({
   onEndRestScrub,
   isPipMode = false,
   onConfirmExit,
+  onExitApp,
 }: MinimalTimerScreenProps) {
   const isFinished = state.phase === 'FINISHED';
   const isProLayout = timerLayout === 'PRO';
@@ -138,6 +142,8 @@ export function MinimalTimerScreen({
   const mainRef = useRef<HTMLElement | null>(null);
   const impactShakeTimeoutRef = useRef<number | null>(null);
   const [isExitModalOpen, setIsExitModalOpen] = useState(false);
+  const [browserCloseHint, setBrowserCloseHint] = useState(false);
+  const browserCloseHintTimerRef = useRef<number | null>(null);
   const [isRoundMenuOpen, setIsRoundMenuOpen] = useState(false);
   const [isMediaMuted, setIsMediaMuted] = useState(false);
   const [muteWarningDismissed, setMuteWarningDismissed] = useState(false);
@@ -170,17 +176,27 @@ export function MinimalTimerScreen({
     !isExitModalOpen &&
     !isRoundMenuOpen;
 
+  useEffect(() => {
+    return () => {
+      if (browserCloseHintTimerRef.current !== null) {
+        window.clearTimeout(browserCloseHintTimerRef.current);
+      }
+    };
+  }, []);
+
   const handleOpenExitModal = useCallback(() => {
     const wasRunning = !state.isPaused && state.phase !== 'IDLE' && state.phase !== 'FINISHED';
     wasRunningBeforeExitRef.current = wasRunning;
     if (wasRunning) {
       onPause();
     }
+    setBrowserCloseHint(false);
     setIsExitModalOpen(true);
   }, [onPause, state.isPaused, state.phase]);
 
   const handleCancelExit = useCallback(() => {
     setIsExitModalOpen(false);
+    setBrowserCloseHint(false);
     if (wasRunningBeforeExitRef.current) {
       wasRunningBeforeExitRef.current = false;
       onResume();
@@ -190,8 +206,32 @@ export function MinimalTimerScreen({
   const handleConfirmExit = useCallback(() => {
     wasRunningBeforeExitRef.current = false;
     setIsExitModalOpen(false);
+    setBrowserCloseHint(false);
     onConfirmExit();
   }, [onConfirmExit]);
+
+  const handleCloseApp = useCallback(() => {
+    wasRunningBeforeExitRef.current = false;
+    const closedNatively = onExitApp ? onExitApp() : false;
+    if (closedNatively) {
+      return;
+    }
+    try {
+      window.close();
+    } catch {
+      // Ignore blocked window.close() in browser tabs
+    }
+    if (typeof window !== 'undefined' && !window.closed) {
+      setBrowserCloseHint(true);
+      if (browserCloseHintTimerRef.current !== null) {
+        window.clearTimeout(browserCloseHintTimerRef.current);
+      }
+      browserCloseHintTimerRef.current = window.setTimeout(() => {
+        browserCloseHintTimerRef.current = null;
+        setBrowserCloseHint(false);
+      }, 3200);
+    }
+  }, [onExitApp]);
 
   const handleOpenRoundMenu = useCallback(() => {
     if (isFinished) {
@@ -1021,10 +1061,30 @@ export function MinimalTimerScreen({
               <button
                 type="button"
                 onClick={onConfirmExit}
-                className="flex min-h-[50px] w-full items-center justify-center rounded-full border-2 border-white/25 bg-black text-sm font-extrabold tracking-[0.14em] text-white uppercase transition-colors hover:border-white/55 hover:bg-white/5 active:scale-[0.98] cursor-pointer"
+                className="flex min-h-[50px] w-full items-center justify-center gap-2 rounded-full border-2 border-white/25 bg-black px-4 text-sm font-extrabold tracking-[0.12em] text-white uppercase transition-colors hover:border-white/55 hover:bg-white/5 active:scale-[0.98] cursor-pointer"
               >
-                TORNA AL SETUP
+                <SlidersHorizontal className="h-4 w-4 shrink-0" />
+                <span>TORNA ALLE IMPOSTAZIONI</span>
               </button>
+
+              <button
+                type="button"
+                onClick={handleCloseApp}
+                className="flex min-h-[46px] w-full items-center justify-center gap-2 rounded-full border border-red-400/35 bg-red-500/8 px-4 text-xs font-extrabold tracking-[0.14em] text-red-200 uppercase transition-colors hover:border-red-400/65 hover:bg-red-500/15 active:scale-[0.98] cursor-pointer"
+              >
+                <Power className="h-3.5 w-3.5 shrink-0 text-red-400" />
+                <span>CHIUDI APP</span>
+              </button>
+
+              {browserCloseHint && (
+                <span
+                  role="status"
+                  aria-live="polite"
+                  className="text-[11px] font-semibold text-slate-400"
+                >
+                  Nel browser chiudi la scheda per uscire
+                </span>
+              )}
             </div>
           </div>
         </div>
@@ -1226,37 +1286,57 @@ export function MinimalTimerScreen({
           aria-modal="true"
           aria-labelledby="exit-modal-title"
         >
-          <div className="my-auto mx-auto w-full max-w-sm rounded-3xl border border-white/20 bg-neutral-950 p-6 text-white shadow-2xl sm:p-8 [@media(orientation:landscape)_and_(max-height:520px)]:p-5">
+          <div className="my-auto mx-auto w-full max-w-sm rounded-3xl border border-white/20 bg-neutral-950 p-6 text-white shadow-2xl sm:p-7 [@media(orientation:landscape)_and_(max-height:520px)]:p-5">
             <h2
               id="exit-modal-title"
-              className="whitespace-nowrap text-center text-lg font-extrabold tracking-wide text-white sm:text-2xl"
+              className="whitespace-nowrap text-center text-lg font-extrabold tracking-wide text-white sm:text-xl"
             >
-              Confermi l&apos;uscita?
+              Uscire dalla sessione?
             </h2>
 
-            <div className="mt-6 flex flex-col gap-3">
+            <div className="mt-5 flex flex-col gap-2.5">
               <button
                 ref={confirmYesBtnRef}
                 type="button"
                 onClick={handleConfirmExit}
-                className="whitespace-nowrap min-h-[54px] w-full rounded-full border-2 bg-black text-base font-extrabold tracking-[0.16em] uppercase transition-all hover:bg-white/5 active:scale-[0.98] cursor-pointer"
+                className="flex min-h-[52px] w-full items-center justify-center gap-2 whitespace-nowrap rounded-full border-2 bg-black px-4 text-xs font-extrabold tracking-[0.12em] uppercase transition-all hover:bg-white/5 active:scale-[0.98] sm:text-sm cursor-pointer"
                 style={{
                   borderColor: theme.hex,
                   color: theme.hex,
                   boxShadow: `0 0 18px rgba(${theme.rgb}, 0.2)`,
                 }}
               >
-                SÌ
+                <SlidersHorizontal className="h-4 w-4 shrink-0" />
+                <span>TORNA ALLE IMPOSTAZIONI</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleCloseApp}
+                className="flex min-h-[50px] w-full items-center justify-center gap-2 whitespace-nowrap rounded-full border border-red-400/40 bg-red-500/8 px-4 text-xs font-extrabold tracking-[0.14em] text-red-200 uppercase transition-colors hover:border-red-400/70 hover:bg-red-500/15 active:scale-[0.98] sm:text-sm cursor-pointer"
+              >
+                <Power className="h-4 w-4 shrink-0 text-red-400" />
+                <span>CHIUDI APP</span>
               </button>
 
               <button
                 ref={cancelNoBtnRef}
                 type="button"
                 onClick={handleCancelExit}
-                className="whitespace-nowrap min-h-[54px] w-full rounded-full border-2 border-white/30 bg-black text-base font-extrabold tracking-[0.16em] text-white uppercase transition-all hover:border-white/60 hover:bg-white/5 active:scale-[0.98] cursor-pointer"
+                className="mt-1 min-h-[48px] w-full whitespace-nowrap rounded-full border border-white/25 bg-black px-4 text-xs font-extrabold tracking-[0.16em] text-white uppercase transition-colors hover:border-white/55 hover:bg-white/5 active:scale-[0.98] sm:text-sm cursor-pointer"
               >
-                NO
+                CONTINUA
               </button>
+
+              {browserCloseHint && (
+                <span
+                  role="status"
+                  aria-live="polite"
+                  className="text-center text-[11px] font-semibold text-slate-400"
+                >
+                  Nel browser chiudi la scheda per uscire
+                </span>
+              )}
             </div>
           </div>
         </div>
